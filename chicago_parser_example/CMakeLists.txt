@@ -8,4 +8,4 @@ include_directories(
 file(GLOB SRC_FILES "${PROJECT_SOURCE_DIR}/src/*.c")
 add_executable(chicago_parser_example ${SRC_FILES})
 add_dependencies(chicago_parser_example  chicago_parser_lib)
-target_link_libraries(chicago_parser_lib)
+target_link_libraries(chicago_parser_example PRIVATE chicago_parser_lib)
