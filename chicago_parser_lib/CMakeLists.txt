@@ -1,0 +1,4 @@
+project(chicago_parser_lib)
+set(CMAKE_C_STANDARD 23)
+file(GLOB SRC_FILES "${PROJECT_SOURCE_DIR}/src/*.c")
+add_library(chicago_parser_lib STATIC ${SRC_FILES})
