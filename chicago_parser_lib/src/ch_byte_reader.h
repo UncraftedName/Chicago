@@ -2,6 +2,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include <memory.h>
 
 typedef struct ch_byte_reader {
     unsigned char *cur, *end;

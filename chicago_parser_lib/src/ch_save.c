@@ -48,6 +48,8 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     // the load command technically starts in Host_Loadgame_f
     // then we start parsing in CSaveRestore::LoadGame
 
+    // this first section happens in CSaveRestore::SaveReadHeader
+
     ch_save_header* sh = &ctx->data->header;
     ch_br_read(&ctx->br, sh, sizeof *sh);
 
@@ -117,15 +119,36 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
 ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
 {
-    ch_br_read(&ctx->br, sf->id, sizeof sf->id); // no need to verify
+    // TODO describe in more detail: CServerGameDLL::LevelInit
+
+    // no memrchr in msvc, sad!
+    size_t i = sizeof(sf->name) - 3;
+    for (; i > 0; i--)
+        if (sf->name[i] == '.')
+            break;
+    if (i == 0)
+        return CC_ERR_INVALID_STATE_FILE_NAME;
+
+    if (!strncmp(sf->name + i, ".hl1", 4)) {
+        sf->sf_type = CH_SF_SAVE_DATA;
+        return ch_parse_sf_save_data(ctx, &sf->sf_save_data);
+    } else if (!strncmp(sf->name + i, ".hl2", 4)) {
+
+    } else if (!strncmp(sf->name + i, ".hl3", 4)) {
+
+    } else {
+        return CC_ERR_INVALID_STATE_FILE_NAME;
+    }
+
     return CH_ERR_NONE;
 }
 
-void ch_free_save_data(ch_parsed_save_data* parsed_data)
+void ch_free_parsed_save_data(ch_parsed_save_data* parsed_data)
 {
     while (parsed_data->state_files) {
         ch_state_file* sf = parsed_data->state_files;
         parsed_data->state_files = parsed_data->state_files->next;
+        // TODO - free sf data here
         free(sf);
     }
     memset(parsed_data, 0, sizeof *parsed_data);

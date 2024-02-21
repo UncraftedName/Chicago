@@ -21,3 +21,4 @@ typedef struct ch_parsed_save_ctx {
 
 ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx);
 ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf);
+ch_err ch_parse_sf_save_data(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf);

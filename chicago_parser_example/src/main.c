@@ -11,6 +11,6 @@ int main()
         printf("Parsing failed with error: %s", ch_err_strs[err]);
     else
         printf("Test result: %.4s", save_data.header.id);
-    ch_free_save_data(&save_data);
+    ch_free_parsed_save_data(&save_data);
     return 0;
 }
