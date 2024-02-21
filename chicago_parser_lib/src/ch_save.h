@@ -3,19 +3,21 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define FOREACH_CH_ERR(GEN)         \
-    GEN(CH_ERR_NONE)                \
-    GEN(CH_ERR_FAILED_TO_READ_FILE) \
-    GEN(CH_ERR_OUT_OF_MEMORY)       \
-    GEN(CH_ERR_READER_OVERFLOWED)   \
-    GEN(CH_ERR_INVALID_HEADER)      \
-    GEN(CH_ERR_INVALID_SYMBOL_TABLE)
+#define FOREACH_CH_ERR(GEN)               \
+    GEN(CH_ERR_NONE)                      \
+    GEN(CH_ERR_FAILED_TO_READ_FILE)       \
+    GEN(CH_ERR_OUT_OF_MEMORY)             \
+    GEN(CH_ERR_READER_OVERFLOWED)         \
+    GEN(CH_ERR_INVALID_HEADER)            \
+    GEN(CH_ERR_INVALID_SYMBOL_TABLE)      \
+    GEN(CH_ERR_INVALID_STATE_FILE_LENGTH) \
+    GEN(CC_ERR_INVALID_NUMBER_OF_STATE_FILES)
 
 #define CH_GENERATE_ENUM(v) v,
 #define CH_GENERATE_STRING(v) #v,
 
 typedef enum ch_err { FOREACH_CH_ERR(CH_GENERATE_ENUM) } ch_err;
-static const char* ch_err_strs[] = {FOREACH_CH_ERR(CH_GENERATE_STRING)};
+static const char* const ch_err_strs[] = {FOREACH_CH_ERR(CH_GENERATE_STRING)};
 
 typedef enum ch_state_file_type {
     CH_SF_SAVE_GAME,

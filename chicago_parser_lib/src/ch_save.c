@@ -30,35 +30,38 @@ ch_err ch_parse_save_from_file(ch_parsed_save_data* parsed_data, const char* fil
 ch_err ch_parse_save_from_bytes(ch_parsed_save_data* parsed_data, void* bytes, size_t n_bytes)
 {
     memset(parsed_data, 0, sizeof *parsed_data);
-    ch_parsed_save_ctx ctx = {.data = parsed_data};
-    ch_byte_reader r = {
-        .cur = bytes,
-        .end = (unsigned char*)bytes + n_bytes,
-        .overflowed = false,
+    ch_parsed_save_ctx ctx = {
+        .data = parsed_data,
+        .br =
+            {
+                .cur = bytes,
+                .end = (unsigned char*)bytes + n_bytes,
+                .overflowed = false,
+            },
     };
-    return ch_parse_save_from_reader(&ctx, &r);
+    return ch_parse_save_ctx(&ctx);
 }
 
-ch_err ch_parse_save_from_reader(ch_parsed_save_ctx* ctx, ch_byte_reader* br)
+ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 {
     // TODO write down the exact logic that happens here:
     // the load command technically starts in Host_Loadgame_f
     // then we start parsing in CSaveRestore::LoadGame
 
     ch_save_header* sh = &ctx->data->header;
-    ch_br_read(br, sh, sizeof *sh);
+    ch_br_read(&ctx->br, sh, sizeof *sh);
 
-    if (br->overflowed)
+    if (ctx->br.overflowed)
         return CH_ERR_READER_OVERFLOWED;
 
     if (strncmp(sh->id, "JSAV", 4) || sh->version != 0x73 || sh->symbol_count < 0 || sh->symbol_table_size_bytes < 0 ||
-        br->cur + sh->symbol_table_size_bytes > br->end)
+        ctx->br.cur + sh->symbol_table_size_bytes + sh->header_fields_size_bytes > ctx->br.end)
         return CH_ERR_INVALID_HEADER;
 
     ch_err ret = CH_ERR_NONE;
 
     if (sh->symbol_table_size_bytes > 0) {
-        const char* tmp_symbol_ptr = ctx->symbols = br->cur;
+        const char* tmp_symbol_ptr = ctx->symbols = ctx->br.cur;
         const char* tmp_symbols_end = tmp_symbol_ptr + sh->symbol_table_size_bytes;
         ctx->n_symbols = sh->symbol_count;
         ctx->symbol_offs = calloc(ctx->n_symbols, sizeof *ctx->symbol_offs);
@@ -74,18 +77,56 @@ ch_err ch_parse_save_from_reader(ch_parsed_save_ctx* ctx, ch_byte_reader* br)
                 break;
             }
         }
+        ch_br_skip(&ctx->br, sh->symbol_table_size_bytes);
     }
 
-    // DO MORE THINGS HERE
+    // TODO : READ THE FIELDS HERE
 
-end:
+    if (ret == CH_ERR_NONE) {
+
+        ch_br_skip(&ctx->br, sh->header_fields_size_bytes);
+        int n_state_files = ch_br_read_32(&ctx->br);
+        if (n_state_files < 0)
+            ret = CC_ERR_INVALID_NUMBER_OF_STATE_FILES;
+
+        ch_state_file** sf = &ctx->data->state_files;
+        for (int i = 0; i < n_state_files && !ctx->br.overflowed && ret == CH_ERR_NONE; i++) {
+            *sf = calloc(1, sizeof **sf);
+            ch_br_read(&ctx->br, (**sf).name, sizeof((**sf).name));
+            int sf_len_bytes = ch_br_read_32(&ctx->br);
+            if (sf_len_bytes < 0) {
+                ret = CH_ERR_INVALID_STATE_FILE_LENGTH;
+                break;
+            }
+            if (ctx->br.overflowed)
+                break;
+            ch_byte_reader tmp_reader = ctx->br;
+            ctx->br.end = ctx->br.cur + sf_len_bytes;
+            ret = ch_parse_state_file(ctx, *sf);
+            ctx->br = tmp_reader;
+            ch_br_skip(&ctx->br, sf_len_bytes);
+            sf = &(**sf).next;
+        }
+        if (ret == CH_ERR_NONE && ctx->br.overflowed)
+            ret = CH_ERR_READER_OVERFLOWED;
+    }
+
     free(ctx->symbol_offs);
     return ret;
 }
 
+ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
+{
+    ch_br_read(&ctx->br, sf->id, sizeof sf->id); // no need to verify
+    return CH_ERR_NONE;
+}
+
 void ch_free_save_data(ch_parsed_save_data* parsed_data)
 {
-    for (ch_state_file *sf_p = parsed_data->state_files, *sf_n = sf_p ? sf_p->next : NULL; sf_p; sf_p = sf_n)
-        free(sf_p);
+    while (parsed_data->state_files) {
+        ch_state_file* sf = parsed_data->state_files;
+        parsed_data->state_files = parsed_data->state_files->next;
+        free(sf);
+    }
     memset(parsed_data, 0, sizeof *parsed_data);
 }

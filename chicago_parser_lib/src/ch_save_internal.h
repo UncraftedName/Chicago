@@ -10,6 +10,8 @@ typedef struct ch_parsed_save_ctx {
 
     ch_parsed_save_data* data;
 
+    ch_byte_reader br;
+
     // symbol table
     const char* symbols;
     ch_symbol_offset n_symbols;
@@ -17,4 +19,5 @@ typedef struct ch_parsed_save_ctx {
 
 } ch_parsed_save_ctx;
 
-ch_err ch_parse_save_from_reader(ch_parsed_save_ctx* ctx, ch_byte_reader* r);
+ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx);
+ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf);
