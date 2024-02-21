@@ -18,7 +18,7 @@ ch_err ch_parse_save_from_file(ch_parsed_save_data* parsed_data, const char* fil
     void* bytes = malloc(size);
     if (!bytes)
         return CH_ERR_OUT_OF_MEMORY;
-    if (fread(bytes, 1, size, f) != size) {
+    if (fread(bytes, 1, size, f) != (size_t)size) {
         free(bytes);
         return CH_ERR_FAILED_TO_READ_FILE;
     }
@@ -63,7 +63,7 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     ch_err ret = CH_ERR_NONE;
 
     if (sh->symbol_table_size_bytes > 0) {
-        const char* tmp_symbol_ptr = ctx->symbols = ctx->br.cur;
+        const char* tmp_symbol_ptr = ctx->symbols = (const char*)ctx->br.cur;
         const char* tmp_symbols_end = tmp_symbol_ptr + sh->symbol_table_size_bytes;
         ctx->n_symbols = sh->symbol_count;
         ctx->symbol_offs = calloc(ctx->n_symbols, sizeof *ctx->symbol_offs);

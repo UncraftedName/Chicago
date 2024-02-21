@@ -5,8 +5,9 @@
 #include <memory.h>
 
 typedef struct ch_byte_reader {
-    unsigned char *cur, *end;
+    const unsigned char *cur, *end;
     bool overflowed;
+    char _pad[3];
 } ch_byte_reader;
 
 inline bool ch_br_could_skip(ch_byte_reader* br, size_t n)

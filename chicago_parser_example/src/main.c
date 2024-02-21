@@ -3,7 +3,7 @@
 
 #include "ch_save.h"
 
-int main()
+int main(void)
 {
     ch_parsed_save_data save_data;
     ch_err err = ch_parse_save_from_file(&save_data, "G:/Games/portal/Portal Source/portal/SAVE/00.sav");
