@@ -8,20 +8,25 @@
 
 #define FOREACH_CH_ERR(GEN)                   \
     GEN(CH_ERR_NONE)                          \
+                                              \
     /* generic errors */                      \
     GEN(CH_ERR_FAILED_TO_READ_FILE)           \
     GEN(CH_ERR_OUT_OF_MEMORY)                 \
     GEN(CH_ERR_READER_OVERFLOWED)             \
-    /* .sav header is funny */                \
-    GEN(CH_ERR_INVALID_HEADER)                \
-    /* one of the symbol tables is funny */   \
-    GEN(CH_ERR_INVALID_SYMBOL_TABLE)          \
-    /* state file header errrors */           \
+                                              \
+    GEN(CH_ERR_INVALID_HEADER_TAG)            \
+    GEN(CH_ERR_INVALID_HEADER_SYMBOL_TABLE)   \
+                                              \
+    /* state file header errors */            \
     GEN(CH_ERR_INVALID_STATE_FILE_LENGTH)     \
     GEN(CC_ERR_INVALID_NUMBER_OF_STATE_FILES) \
     GEN(CC_ERR_INVALID_STATE_FILE_NAME)       \
-    /* .hl1 errors */                         \
-    GEN(CC_ERR_HL1_INVALID_HEADER)
+                                              \
+    /* .hl1 errors TODO REMOVE THIS*/         \
+    GEN(CC_ERR_HL1_INVALID_TAG)               \
+    /* .hl2 errors */                         \
+    GEN(CC_ERR_HL2_INVALID_TAG)               \
+    GEN(CC_ERR_HL2_INVALID_SECTION_HEADER)
 
 typedef enum ch_err { FOREACH_CH_ERR(CH_GENERATE_ENUM) } ch_err;
 static const char* const ch_err_strs[] = {FOREACH_CH_ERR(CH_GENERATE_STRING)};
@@ -32,22 +37,17 @@ typedef enum ch_state_file_type {
     CH_SF_ENTITY_PATCH,
 } ch_state_file_type;
 
-typedef struct ch_save_header {
-    char id[4];       // "JSAV"
-    uint32_t version; // 0x0073
-    int32_t header_fields_size_bytes;
-    int32_t symbol_count;
-    int32_t symbol_table_size_bytes;
-} ch_save_header;
+typedef struct ch_tag {
+    char id[4];
+    uint32_t version;
+} ch_tag;
 
 typedef struct ch_sf_save_data {
-    char id[4];
-    int32_t version;
+    ch_tag tag;
 } ch_sf_save_data;
 
 typedef struct ch_sf_adjacent_client_state {
-    // TODO - placeholder
-    char id[4];
+    ch_tag tag;
 } ch_sf_adjacent_client_state;
 
 typedef struct ch_sf_entity_patch {
@@ -68,7 +68,7 @@ typedef struct ch_state_file {
 
 typedef struct ch_parsed_save_data {
     // char game_id[32];
-    ch_save_header header;
+    ch_tag tag;
     ch_state_file* state_files;
 } ch_parsed_save_data;
 

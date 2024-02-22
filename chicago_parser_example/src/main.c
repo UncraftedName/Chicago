@@ -10,7 +10,7 @@ int main(void)
     if (err)
         printf("Parsing failed with error: %s", ch_err_strs[err]);
     else
-        printf("Test result: %.4s", save_data.header.id);
+        printf("Test result: %.4s", save_data.tag.id);
     ch_free_parsed_save_data(&save_data);
     return 0;
 }

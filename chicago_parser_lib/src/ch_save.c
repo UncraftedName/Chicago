@@ -50,71 +50,78 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
     // this first section happens in CSaveRestore::SaveReadHeader
 
-    ch_save_header* sh = &ctx->data->header;
-    ch_br_read(&ctx->br, sh, sizeof *sh);
+    ch_byte_reader* br = &ctx->br;
 
-    if (ctx->br.overflowed)
+    // read tag
+    ch_br_read(br, &ctx->data->tag, sizeof ctx->data->tag);
+    const ch_tag expected_tag = {.id = {'J', 'S', 'A', 'V'}, .version = 0x73};
+    if (memcmp(&ctx->data->tag, &expected_tag, sizeof expected_tag))
+        return CH_ERR_INVALID_HEADER_TAG;
+
+    // read misc header info
+
+    int32_t global_fields_size_bytes = ch_br_read_32(br);
+
+    ctx->st.n_symbols = ch_br_read_32(br);
+    int32_t st_size_bytes = ch_br_read_32(br);
+    ctx->st.symbols = (const char*)br->cur;
+
+    if (br->overflowed)
         return CH_ERR_READER_OVERFLOWED;
 
-    if (strncmp(sh->id, "JSAV", 4) || sh->version != 0x73 || sh->symbol_count < 0 || sh->symbol_table_size_bytes < 0 ||
-        ctx->br.cur + sh->symbol_table_size_bytes + sh->header_fields_size_bytes > ctx->br.end)
-        return CH_ERR_INVALID_HEADER;
+    ch_err err;
 
-    ch_err ret = CH_ERR_NONE;
-
-    if (sh->symbol_table_size_bytes > 0) {
-        const char* tmp_symbol_ptr = ctx->symbols = (const char*)ctx->br.cur;
-        const char* tmp_symbols_end = tmp_symbol_ptr + sh->symbol_table_size_bytes;
-        ctx->n_symbols = sh->symbol_count;
-        ctx->symbol_offs = calloc(ctx->n_symbols, sizeof *ctx->symbol_offs);
-        if (!ctx->symbol_offs)
-            return CH_ERR_OUT_OF_MEMORY;
-
-        for (ch_symbol_offset i = 0; i < ctx->n_symbols; i++) {
-            if (*tmp_symbol_ptr)
-                ctx->symbol_offs[i] = tmp_symbol_ptr - ctx->symbols;
-            tmp_symbol_ptr += strnlen(tmp_symbol_ptr, tmp_symbols_end - tmp_symbol_ptr) + 1;
-            if (tmp_symbol_ptr > tmp_symbols_end) {
-                ret = CH_ERR_INVALID_SYMBOL_TABLE;
-                break;
-            }
-        }
-        ch_br_skip(&ctx->br, sh->symbol_table_size_bytes);
+    // read symbol table
+    if (st_size_bytes > 0) {
+        if (ctx->st.n_symbols < 0)
+            return CH_ERR_INVALID_HEADER_SYMBOL_TABLE;
+        ch_byte_reader br_st = ch_br_split_skip(br, st_size_bytes);
+        if (br->overflowed)
+            return CH_ERR_READER_OVERFLOWED;
+        err = ch_br_read_symbol_table(&br_st, &ctx->st);
+        if (err)
+            return err;
     }
 
-    // TODO : READ THE FIELDS HERE
-
-    if (ret == CH_ERR_NONE) {
-
-        ch_br_skip(&ctx->br, sh->header_fields_size_bytes);
-        int n_state_files = ch_br_read_32(&ctx->br);
-        if (n_state_files < 0)
-            ret = CC_ERR_INVALID_NUMBER_OF_STATE_FILES;
-
-        ch_state_file** sf = &ctx->data->state_files;
-        for (int i = 0; i < n_state_files && !ctx->br.overflowed && ret == CH_ERR_NONE; i++) {
-            *sf = calloc(1, sizeof **sf);
-            ch_br_read(&ctx->br, (**sf).name, sizeof((**sf).name));
-            int sf_len_bytes = ch_br_read_32(&ctx->br);
-            if (sf_len_bytes < 0) {
-                ret = CH_ERR_INVALID_STATE_FILE_LENGTH;
-                break;
-            }
-            if (ctx->br.overflowed)
-                break;
-            ch_byte_reader tmp_reader = ctx->br;
-            ctx->br.end = ctx->br.cur + sf_len_bytes;
-            ret = ch_parse_state_file(ctx, *sf);
-            ctx->br = tmp_reader;
-            ch_br_skip(&ctx->br, sf_len_bytes);
-            sf = &(**sf).next;
+    // read global fields
+    {
+        ch_byte_reader br_gf = ch_br_split_skip(br, global_fields_size_bytes);
+        if (br->overflowed) {
+            err = CH_ERR_READER_OVERFLOWED;
+        } else {
+            // TODO : READ THE GLOBAL FIELDS HERE
+            err = CH_ERR_NONE;
+            (void)br_gf;
         }
-        if (ret == CH_ERR_NONE && ctx->br.overflowed)
-            ret = CH_ERR_READER_OVERFLOWED;
+        ch_free_symbol_table(&ctx->st);
+        if (err)
+            return err;
     }
 
-    free(ctx->symbol_offs);
-    return ret;
+    // read state files
+
+    int n_state_files = ch_br_read_32(br);
+    if (n_state_files < 0)
+        return CC_ERR_INVALID_NUMBER_OF_STATE_FILES;
+
+    ch_state_file** sf = &ctx->data->state_files;
+    for (int i = 0; i < n_state_files && !ctx->br.overflowed; i++) {
+        *sf = calloc(1, sizeof **sf);
+        ch_br_read(br, (**sf).name, sizeof((**sf).name));
+        int sf_len_bytes = ch_br_read_32(br);
+        if (sf_len_bytes < 0)
+            return CH_ERR_INVALID_STATE_FILE_LENGTH;
+        if (ctx->br.overflowed)
+            return CH_ERR_READER_OVERFLOWED;
+        ch_byte_reader br_after_sf = ch_br_split_skip_swap(br, sf_len_bytes);
+        err = ch_parse_state_file(ctx, *sf);
+        if (err)
+            return err;
+        *br = br_after_sf;
+        sf = &(**sf).next;
+    }
+
+    return CH_ERR_NONE;
 }
 
 ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
@@ -131,9 +138,10 @@ ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
 
     if (!strncmp(sf->name + i, ".hl1", 4)) {
         sf->sf_type = CH_SF_SAVE_DATA;
-        return ch_parse_sf_save_data(ctx, &sf->sf_save_data);
+        return ch_parse_hl1(ctx, &sf->sf_save_data);
     } else if (!strncmp(sf->name + i, ".hl2", 4)) {
-
+        sf->sf_type = CH_SF_ADJACENT_CLIENT_STATE;
+        return ch_parse_hl2(ctx, &sf->sf_adjacent_client_state);
     } else if (!strncmp(sf->name + i, ".hl3", 4)) {
 
     } else {
