@@ -5,12 +5,10 @@
 #include "ch_byte_reader.h"
 #include "ch_save.h"
 
-typedef int ch_symbol_offset;
-
 typedef struct ch_symbol_table {
     const char* symbols;
-    ch_symbol_offset n_symbols;
-    ch_symbol_offset* symbol_offs;
+    int n_symbols;
+    int* symbol_offs;
 } ch_symbol_table;
 
 // a wrapper of the parsed data with some additional context
@@ -20,14 +18,14 @@ typedef struct ch_parsed_save_ctx {
     ch_symbol_table st;
 } ch_parsed_save_ctx;
 
-// free the table and set symbols & n_symbols before calling (n_symbols should be positive)
-// br should have end set to the end of the symbol table
-ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table* st);
+// Creates and allocates symbol_offs if CH_ERR_NONE - make sure to free it!
+// br should be only big enough to fit the symbol table.
+ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table* st, int n_symbols);
 
 inline void ch_free_symbol_table(ch_symbol_table* st)
 {
     free(st->symbol_offs);
-    st->symbol_offs = NULL;
+    memset(st, 0, sizeof *st);
 }
 
 ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx);

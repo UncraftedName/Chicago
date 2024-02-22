@@ -5,15 +5,15 @@
 // .hl2 info right after the tag
 typedef struct ch_hl2_sections {
 
-    int entity_size_bytes;
-    int header_size_bytes;
-    int decal_size_bytes;
-    int music_size_bytes;
-    int symbol_size_bytes;
+    int32_t entity_size_bytes;
+    int32_t header_size_bytes;
+    int32_t decal_size_bytes;
+    int32_t music_size_bytes;
+    int32_t symbol_size_bytes;
 
-    int decal_count;
-    int music_count;
-    int symbol_count;
+    int32_t decal_count;
+    int32_t music_count;
+    int32_t symbol_count;
 
 } ch_hl2_sections;
 

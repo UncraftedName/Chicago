@@ -13,9 +13,9 @@
     GEN(CH_ERR_FAILED_TO_READ_FILE)           \
     GEN(CH_ERR_OUT_OF_MEMORY)                 \
     GEN(CH_ERR_READER_OVERFLOWED)             \
+    GEN(CH_ERR_INVALID_SYMBOL_TABLE)          \
                                               \
-    GEN(CH_ERR_INVALID_HEADER_TAG)            \
-    GEN(CH_ERR_INVALID_HEADER_SYMBOL_TABLE)   \
+    GEN(CH_ERR_HEADER_INVALID_TAG)            \
                                               \
     /* state file header errors */            \
     GEN(CH_ERR_INVALID_STATE_FILE_LENGTH)     \

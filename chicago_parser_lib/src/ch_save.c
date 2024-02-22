@@ -56,16 +56,12 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     ch_br_read(br, &ctx->data->tag, sizeof ctx->data->tag);
     const ch_tag expected_tag = {.id = {'J', 'S', 'A', 'V'}, .version = 0x73};
     if (memcmp(&ctx->data->tag, &expected_tag, sizeof expected_tag))
-        return CH_ERR_INVALID_HEADER_TAG;
+        return CH_ERR_HEADER_INVALID_TAG;
 
     // read misc header info
-
     int32_t global_fields_size_bytes = ch_br_read_32(br);
-
-    ctx->st.n_symbols = ch_br_read_32(br);
+    int32_t st_n_symbols = ch_br_read_32(br);
     int32_t st_size_bytes = ch_br_read_32(br);
-    ctx->st.symbols = (const char*)br->cur;
-
     if (br->overflowed)
         return CH_ERR_READER_OVERFLOWED;
 
@@ -73,12 +69,10 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
     // read symbol table
     if (st_size_bytes > 0) {
-        if (ctx->st.n_symbols < 0)
-            return CH_ERR_INVALID_HEADER_SYMBOL_TABLE;
         ch_byte_reader br_st = ch_br_split_skip(br, st_size_bytes);
         if (br->overflowed)
             return CH_ERR_READER_OVERFLOWED;
-        err = ch_br_read_symbol_table(&br_st, &ctx->st);
+        err = ch_br_read_symbol_table(&br_st, &ctx->st, st_n_symbols);
         if (err)
             return err;
     }
