@@ -137,12 +137,11 @@ ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
         sf->sf_type = CH_SF_ADJACENT_CLIENT_STATE;
         return ch_parse_hl2(ctx, &sf->sf_adjacent_client_state);
     } else if (!strncmp(sf->name + i, ".hl3", 4)) {
-
+        sf->sf_type = CH_SF_ENTITY_PATCH;
+        return ch_parse_hl3(ctx, &sf->sf_entity_patch);
     } else {
         return CC_ERR_INVALID_STATE_FILE_NAME;
     }
-
-    return CH_ERR_NONE;
 }
 
 void ch_free_parsed_save_data(ch_parsed_save_data* parsed_data)

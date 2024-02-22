@@ -51,8 +51,8 @@ typedef struct ch_sf_adjacent_client_state {
 } ch_sf_adjacent_client_state;
 
 typedef struct ch_sf_entity_patch {
-    // TODO - placeholder
-    int n_patches;
+    int32_t n_patched_ents;
+    int32_t *patched_ents;
 } ch_sf_entity_patch;
 
 typedef struct ch_state_file {

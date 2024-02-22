@@ -32,3 +32,4 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx);
 ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf);
 ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf);
 ch_err ch_parse_hl2(ch_parsed_save_ctx* ctx, ch_sf_adjacent_client_state* sf);
+ch_err ch_parse_hl3(ch_parsed_save_ctx* ctx, ch_sf_entity_patch* sf);
