@@ -20,8 +20,10 @@ ch_err ch_parse_save_from_file(ch_parsed_save_data* parsed_data, const char* fil
         return CH_ERR_OUT_OF_MEMORY;
     if (fread(bytes, 1, size, f) != (size_t)size) {
         free(bytes);
+        fclose(f);
         return CH_ERR_FAILED_TO_READ_FILE;
     }
+    fclose(f);
     ch_err ret = ch_parse_save_from_bytes(parsed_data, bytes, size);
     free(bytes);
     return ret;
