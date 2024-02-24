@@ -3,33 +3,47 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "SDK/datamap.h"
+
 #define CH_GENERATE_ENUM(v) v,
 #define CH_GENERATE_STRING(v) #v,
 
-#define FOREACH_CH_ERR(GEN)                   \
-    GEN(CH_ERR_NONE)                          \
-                                              \
-    /* generic errors */                      \
-    GEN(CH_ERR_FAILED_TO_READ_FILE)           \
-    GEN(CH_ERR_OUT_OF_MEMORY)                 \
-    GEN(CH_ERR_READER_OVERFLOWED)             \
-    GEN(CH_ERR_INVALID_SYMBOL_TABLE)          \
-                                              \
-    GEN(CH_ERR_HEADER_INVALID_TAG)            \
-                                              \
-    /* state file header errors */            \
-    GEN(CH_ERR_INVALID_STATE_FILE_LENGTH)     \
-    GEN(CC_ERR_INVALID_NUMBER_OF_STATE_FILES) \
-    GEN(CC_ERR_INVALID_STATE_FILE_NAME)       \
-                                              \
-    /* .hl1 errors TODO REMOVE THIS*/         \
-    GEN(CC_ERR_HL1_INVALID_TAG)               \
-    /* .hl2 errors */                         \
-    GEN(CC_ERR_HL2_INVALID_TAG)               \
-    GEN(CC_ERR_HL2_INVALID_SECTION_HEADER)
+#define CH_FOREACH_ERR(GEN)           \
+    GEN(CH_ERR_NONE)                  \
+                                      \
+    /* generic errors */              \
+    GEN(CH_ERR_FAILED_TO_READ_FILE)   \
+    GEN(CH_ERR_OUT_OF_MEMORY)         \
+    GEN(CH_ERR_READER_OVERFLOWED)     \
+    GEN(CH_ERR_WRITER_OVERFLOWED)     \
+    GEN(CH_ERR_BAD_SYMBOL_TABLE)      \
+                                      \
+    /* .sav header errors */          \
+    GEN(CH_ERR_SAV_BAD_TAG)           \
+                                      \
+    /* errors for field parsing */    \
+    GEN(CH_ERR_BAD_FIELDS_MARKER)     \
+    GEN(CH_ERR_BAD_SYMBOL)            \
+    GEN(CH_ERR_BAD_FIELD_COUNT)       \
+    GEN(CH_ERR_FIELD_NOT_FOUND)       \
+    GEN(CH_ERR_BAD_FIELD_BLOCK_SIZE)  \
+    GEN(CH_ERR_BAD_FIELD_TYPE)        \
+    GEN(CH_ERR_BAD_BLOCK_SIZE)        \
+                                      \
+    /* state file errors */           \
+    GEN(CH_ERR_BAD_STATE_FILE_LENGTH) \
+    GEN(CC_ERR_BAD_STATE_FILE_COUNT)  \
+    GEN(CC_ERR_BAD_STATE_FILE_NAME)   \
+                                      \
+    /* .hl1 errors */                 \
+    GEN(CC_ERR_HL1_BAD_TAG)           \
+                                      \
+    /* .hl2 errors */                 \
+    GEN(CC_ERR_HL2_BAD_TAG)           \
+    GEN(CC_ERR_HL2_BAD_SECTION_HEADER)
 
-typedef enum ch_err { FOREACH_CH_ERR(CH_GENERATE_ENUM) } ch_err;
-static const char* const ch_err_strs[] = {FOREACH_CH_ERR(CH_GENERATE_STRING)};
+typedef enum ch_err { CH_FOREACH_ERR(CH_GENERATE_ENUM) } ch_err;
+static const char* const ch_err_strs[] = {CH_FOREACH_ERR(CH_GENERATE_STRING)};
 
 typedef enum ch_state_file_type {
     CH_SF_SAVE_DATA,
@@ -42,6 +56,22 @@ typedef struct ch_tag {
     uint32_t version;
 } ch_tag;
 
+typedef struct ch_parsed_field_info {
+    int field_idx;
+    int data_off;
+    // A negative data len means that although this field was present in the save file, there wasn't
+    // enough information to parse it. This should only happen for custom fields or guessed datamaps.
+    int data_len;
+} ch_parsed_field_info;
+
+typedef struct ch_parsed_fields {
+    struct ch_parsed_fields* base_fields;
+    const ch_datamap* map;
+    unsigned char* packed_data;
+    ch_parsed_field_info* packed_info;
+    int n_packed_fields;
+} ch_parsed_fields;
+
 typedef struct ch_sf_save_data {
     ch_tag tag;
 } ch_sf_save_data;
@@ -52,7 +82,7 @@ typedef struct ch_sf_adjacent_client_state {
 
 typedef struct ch_sf_entity_patch {
     int32_t n_patched_ents;
-    int32_t *patched_ents;
+    int32_t* patched_ents;
 } ch_sf_entity_patch;
 
 typedef struct ch_state_file {

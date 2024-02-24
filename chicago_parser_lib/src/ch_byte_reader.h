@@ -10,7 +10,7 @@ typedef struct ch_byte_reader {
     char _pad[3];
 } ch_byte_reader;
 
-inline bool ch_br_could_skip(ch_byte_reader* br, size_t n)
+inline bool ch_br_could_skip(const ch_byte_reader* br, size_t n)
 {
     return !br->overflowed && br->cur + n <= br->end;
 }
@@ -23,6 +23,11 @@ inline void ch_br_skip(ch_byte_reader* br, size_t n)
         br->overflowed = true;
         br->cur = br->end;
     }
+}
+
+inline void ch_br_skip_unchecked(ch_byte_reader* br, size_t n)
+{
+    br->cur += n;
 }
 
 inline void ch_br_read(ch_byte_reader* br, void* dest, size_t n)
@@ -92,6 +97,14 @@ inline ch_byte_reader ch_br_split_skip_swap(ch_byte_reader* br, size_t chunk_siz
         }                                                \
     }
 
+#define CH_BR_DEFINE_PRIMITIVE_READ_UNCHECKED(func_name, ret_type) \
+    inline ret_type func_name(ch_byte_reader* br)                  \
+    {                                                              \
+        ret_type tmp = *(ret_type*)br->cur;                        \
+        br->cur += sizeof(ret_type);                               \
+        return tmp;                                                \
+    }
+
 #define CH_BR_DEFINE_PRIMITIVE_PEAK(func_name, ret_type) \
     inline ret_type func_name(ch_byte_reader* br)        \
     {                                                    \
@@ -104,8 +117,8 @@ inline ch_byte_reader ch_br_split_skip_swap(ch_byte_reader* br, size_t chunk_siz
         }                                                \
     }
 
+CH_BR_DEFINE_PRIMITIVE_READ(ch_br_read_16, int16_t)
 CH_BR_DEFINE_PRIMITIVE_READ(ch_br_read_32, int32_t)
 CH_BR_DEFINE_PRIMITIVE_READ(ch_br_read_u32, uint32_t)
+CH_BR_DEFINE_PRIMITIVE_READ_UNCHECKED(ch_br_read_16_unchecked, int16_t);
 CH_BR_DEFINE_PRIMITIVE_PEAK(ch_br_peak_u32, uint32_t)
-
-const char* ch_br_read_str(ch_byte_reader* br);
