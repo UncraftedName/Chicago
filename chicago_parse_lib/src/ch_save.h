@@ -8,6 +8,7 @@
 #define CH_GENERATE_ENUM(v) v,
 #define CH_GENERATE_STRING(v) #v,
 
+// TODO move this bad boy to a separate file so that the search lib only includes what's required
 #define CH_FOREACH_ERR(GEN)           \
     GEN(CH_ERR_NONE)                  \
                                       \

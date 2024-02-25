@@ -30,14 +30,17 @@ inline void ch_br_skip_unchecked(ch_byte_reader* br, size_t n)
     br->cur += n;
 }
 
-inline void ch_br_read(ch_byte_reader* br, void* dest, size_t n)
+// returns true on success
+inline bool ch_br_read(ch_byte_reader* br, void* dest, size_t n)
 {
     if (ch_br_could_skip(br, n)) {
         memcpy(dest, br->cur, n);
         br->cur += n;
+        return true;
     } else {
         br->overflowed = true;
         br->cur = br->end;
+        return false;
     }
 }
 

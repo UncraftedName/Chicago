@@ -12,6 +12,7 @@ ch_err ch_parse_hl3(ch_parsed_save_ctx* ctx, ch_sf_entity_patch* sf)
     sf->patched_ents = malloc(size_bytes);
     if (!sf->patched_ents)
         return CH_ERR_OUT_OF_MEMORY;
-    ch_br_read(br, sf->patched_ents, size_bytes);
+    if (!ch_br_read(br, sf->patched_ents, size_bytes))
+        return CH_ERR_READER_OVERFLOWED;
     return CH_ERR_NONE;
 }

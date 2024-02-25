@@ -21,7 +21,8 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
         return CC_ERR_HL1_BAD_TAG;
 
     ch_hl1_sections sections;
-    ch_br_read(br, &sections, sizeof sections);
+    if (!ch_br_read(br, &sections, sizeof sections))
+        return CH_ERR_READER_OVERFLOWED;
 
     if (sections.symbol_table_size_bytes > 0) {
         ch_byte_reader br_st = ch_br_split_skip(br, sections.symbol_table_size_bytes);

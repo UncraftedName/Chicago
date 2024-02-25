@@ -102,29 +102,28 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     // read state files
 
     int n_state_files = ch_br_read_32(br);
+    if (br->overflowed)
+        return CH_ERR_READER_OVERFLOWED;
     if (n_state_files < 0)
         return CC_ERR_BAD_STATE_FILE_COUNT;
 
     ch_state_file** sf = &ctx->data->state_files;
-    for (int i = 0; i < n_state_files; i++) {
+    for (int i = 0; i < n_state_files && !err; i++) {
         *sf = calloc(1, sizeof **sf);
-        ch_br_read(br, (**sf).name, sizeof((**sf).name));
-        int sf_len_bytes = ch_br_read_32(br);
-        if (ctx->br.overflowed)
+        if (!ch_br_read(br, (**sf).name, sizeof((**sf).name)))
             return CH_ERR_READER_OVERFLOWED;
+        int sf_len_bytes = ch_br_read_32(br);
         if (sf_len_bytes < 0)
             return CH_ERR_BAD_STATE_FILE_LENGTH;
         ch_byte_reader br_after_sf = ch_br_split_skip_swap(br, sf_len_bytes);
         if (br_after_sf.overflowed)
             return CH_ERR_READER_OVERFLOWED;
         err = ch_parse_state_file(ctx, *sf);
-        if (err)
-            return err;
         *br = br_after_sf;
         sf = &(**sf).next;
     }
 
-    return CH_ERR_NONE;
+    return err;
 }
 
 ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
