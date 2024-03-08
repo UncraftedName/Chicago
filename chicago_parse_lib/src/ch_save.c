@@ -6,7 +6,7 @@
 #include "ch_field_reader.h"
 #include "ch_save_internal.h"
 
-ch_err ch_parse_save_from_file(ch_parsed_save_data* parsed_data, const char* file_path)
+ch_err ch_parse_save_path(ch_parsed_save_data* parsed_data, const char* file_path)
 {
     FILE* f = fopen(file_path, "rb");
     if (!f)
@@ -26,12 +26,12 @@ ch_err ch_parse_save_from_file(ch_parsed_save_data* parsed_data, const char* fil
         return CH_ERR_FAILED_TO_READ_FILE;
     }
     fclose(f);
-    ch_err ret = ch_parse_save_from_bytes(parsed_data, bytes, size);
+    ch_err ret = ch_parse_save_bytes(parsed_data, bytes, size);
     free(bytes);
     return ret;
 }
 
-ch_err ch_parse_save_from_bytes(ch_parsed_save_data* parsed_data, void* bytes, size_t n_bytes)
+ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, void* bytes, size_t n_bytes)
 {
     memset(parsed_data, 0, sizeof *parsed_data);
     ch_parsed_save_ctx ctx = {
@@ -101,6 +101,7 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
     // read state files
 
+    // TODO put these in a single array
     int n_state_files = ch_br_read_32(br);
     if (br->overflowed)
         return CH_ERR_READER_OVERFLOWED;

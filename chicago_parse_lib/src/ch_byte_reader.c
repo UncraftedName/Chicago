@@ -9,6 +9,7 @@ ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table* st, int n_sy
         return CH_ERR_BAD_SYMBOL_TABLE;
     st->symbols = (const char*)br->cur;
     st->n_symbols = n_symbols;
+    // TODO - change to realloc
     st->symbol_offs = calloc(st->n_symbols, sizeof *st->symbol_offs);
     if (!st->symbol_offs)
         return CH_ERR_OUT_OF_MEMORY;
@@ -83,6 +84,7 @@ ch_err ch_br_read_save_fields(ch_parsed_save_ctx* ctx,
     if (map->n_fields <= 0)
         return CH_ERR_BAD_FIELD_COUNT;
 
+    // TODO merge this calloc with the one below
     fields_out->n_packed_fields = n_fields;
     fields_out->packed_info = calloc(n_fields, sizeof(ch_parsed_field_info));
     if (!fields_out->packed_info)
@@ -117,6 +119,7 @@ ch_err ch_br_read_save_fields(ch_parsed_save_ctx* ctx,
             info->data_len = -1;
         } else {
             // for simple fields we will just memcpy so we can assume this to be true
+            // TODO we might guess what the fields are - so add a check here to see if the block size is a multiple of the field count
             info->data_len = block.size_bytes;
         }
         if (info->data_len > 0)

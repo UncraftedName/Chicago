@@ -103,6 +103,6 @@ typedef struct ch_parsed_save_data {
     ch_state_file* state_files;
 } ch_parsed_save_data;
 
-ch_err ch_parse_save_from_file(ch_parsed_save_data* parsed_data, const char* file_path);
-ch_err ch_parse_save_from_bytes(ch_parsed_save_data* parsed_data, void* bytes, size_t n_bytes);
+ch_err ch_parse_save_path(ch_parsed_save_data* parsed_data, const char* file_path);
+ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, void* bytes, size_t n_bytes);
 void ch_free_parsed_save_data(ch_parsed_save_data* parsed_data);
