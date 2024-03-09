@@ -48,73 +48,37 @@ Use this for datamap lookup? https://github.com/fanf2/qp
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
-#pragma warning(push, 3)
-// #include "function_length.h"
-#pragma warning(pop)
+#include "ch_search.h"
 
-ch_err ch_search_pe_file(ch_search_result* result)
+const void* ch_memmem(const void* restrict haystack,
+                      size_t haystack_len,
+                      const void* restrict needle,
+                      size_t needle_len)
 {
-    (void)result;
-
-    // FILE* f = fopen("G:/Games/portal/Portal Source/portal/bin/server.dylib", "rb");
-    // const char* test_path = "G:/Games/portal/Portal Source/portal/bin/server.dll";
-    // FILE* f = fopen(test_path, "rb");
-    // fseek(f, 0, SEEK_END);
-    // long int size = ftell(f);
-    // rewind(f);
-    // char* bytes = malloc(size);
-    // fread(bytes, 1, size, f);
-    // fclose(f);
-
-    // size_t off = 0xe2b20; // 5135 server.dll   CBaseEntity
-    // size_t off = 0x39b50; // 5135 server.dylib CBaseEntity
-
-    // pFunctionInfo info = getFunctionLength(bytes + off, X86);
-    // (void)info;
-
-    // const char* search_name = "CBaseEntity";
-    // char sn[64];
-    // sn[0] = '\0';
-    // strcpy(sn + 1, search_name);
-
-    return CH_ERR_NONE;
+    if (!haystack || !needle || haystack_len == 0 || needle_len == 0)
+        return NULL;
+    for (const char* h = haystack; haystack_len >= needle_len; ++h, --haystack_len)
+        if (!memcmp(h, needle, needle_len))
+            return h;
+    return NULL;
 }
 
-bool ch_proc_has_required_modules(DWORD proc_id)
+/*
+* 1) find the string corresponding to the name of the datamap
+* 2) find instructions that reference that string (TODO consider only searching instructions corresponding to static initializers?)
+* 3) determine the address of the datamap from that function
+* 4) verify that the datamap is valid
+*/
+datamap_t* ch_find_datamap_by_name(const ch_mod_info* module_info, const char* name)
 {
-    HANDLE snap = (HANDLE)ERROR_BAD_LENGTH;
-    for (int i = 0; i < 10 && snap == (HANDLE)ERROR_BAD_LENGTH; i++)
-        snap = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, proc_id);
-    if (snap == (HANDLE)ERROR_BAD_LENGTH || snap == INVALID_HANDLE_VALUE)
-        return false;
-
-    struct {
-        WCHAR* name;
-        unsigned int flag;
-    } required_mods[] = {
-        {L"client.dll", 1},
-        {L"server.dll", 2},
-        {L"engine.dll", 4},
-        {L"vphysics.dll", 8},
-    };
-
-    const int num_required_mods = sizeof(required_mods) / sizeof(*required_mods);
-    unsigned int mod_flags = 0, target_flags = 0;
-    for (int i = 0; i < num_required_mods; i++)
-        target_flags |= required_mods[i].flag;
-
-    MODULEENTRY32W me32w = {.dwSize = sizeof(MODULEENTRY32W)};
-    if (Module32FirstW(snap, &me32w)) {
-        do {
-            for (int j = 0; j < num_required_mods; j++) {
-                if (!wcscmp(required_mods[j].name, me32w.szModule)) {
-                    mod_flags |= required_mods[j].flag;
-                    break;
-                }
-            }
-        } while (mod_flags != target_flags && Module32NextW(snap, &me32w));
-    }
-    CloseHandle(snap);
-    return mod_flags == target_flags;
+    size_t name_len = strlen(name);
+    const char* sec_data = module_info->sections[CH_SEC_RDATA].start;
+    size_t sec_size = module_info->sections[CH_SEC_RDATA].len;
+    const void* match = ch_memmem(sec_data, sec_size, name, name_len + 1);
+    (void)match;
+    int x = 1;
+    (void)x;
+    return NULL;
 }

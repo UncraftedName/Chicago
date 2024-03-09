@@ -47,6 +47,7 @@ typedef enum ch_err { CH_FOREACH_ERR(CH_GENERATE_ENUM) } ch_err;
 static const char* const ch_err_strs[] = {CH_FOREACH_ERR(CH_GENERATE_STRING)};
 
 typedef enum ch_state_file_type {
+    CH_SF_INVALID = 0,
     CH_SF_SAVE_DATA,
     CH_SF_ADJACENT_CLIENT_STATE,
     CH_SF_ENTITY_PATCH,

@@ -1,7 +1,4 @@
-
-
 #include "ch_inject.h"
-#include "ch_search.h"
 
 void ch_find_candidate_games(PROCESSENTRY32W* procs, int num_entries, int* num_entries_returned)
 {
@@ -16,7 +13,7 @@ void ch_find_candidate_games(PROCESSENTRY32W* procs, int num_entries, int* num_e
     procs[0].dwSize = sizeof *procs;
     if (Process32FirstW(snap, &procs[0])) {
         do {
-            if (ch_proc_has_required_modules(procs[*num_entries_returned].th32ProcessID)) {
+            if (ch_get_module_info(procs[*num_entries_returned].th32ProcessID, NULL)) {
                 if (++*num_entries_returned >= num_entries)
                     break;
                 procs[*num_entries_returned].dwSize = sizeof *procs;

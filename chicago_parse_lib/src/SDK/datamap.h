@@ -90,9 +90,62 @@ struct ch_byte_reader;
 struct ch_byte_writer;
 enum ch_err;
 
+enum {
+    TD_OFFSET_NORMAL = 0,
+    TD_OFFSET_PACKED = 1,
+
+    // Must be last
+    TD_OFFSET_COUNT,
+};
+
+typedef struct typedescription_t {
+    ch_field_type fieldType;
+    const char* fieldName;
+    int fieldOffset[TD_OFFSET_COUNT]; // 0 == normal, 1 == packed offset
+    unsigned short fieldSize;
+    short flags;
+    // the name of the variable in the map/fgd data, or the name of the action
+    const char* externalName;
+    // pointer to the function set for save/restoring of custom data types
+    void* pSaveRestoreOps;
+    // for associating function with string names
+    void* inputFunc;
+    // For embedding additional datatables inside this one
+    struct datamap_t* td;
+
+    // Stores the actual member variable size in bytes
+    int fieldSizeInBytes;
+
+    // FTYPEDESC_OVERRIDE point to first baseclass instance if chains_validated has occurred
+    struct typedescription_t* override_field;
+
+    // Used to track exclusion of baseclass fields
+    int override_count;
+
+    // Tolerance for field errors for float fields
+    float fieldTolerance;
+} typedescription_t;
+
+typedef struct datamap_t {
+    struct typedescription_t* dataDesc;
+    int dataNumFields;
+    char const* dataClassName;
+    struct datamap_t* baseMap;
+
+    bool chains_validated;
+    // Have the "packed" offsets been computed
+    bool packed_offsets_computed;
+    char _pad[2];
+    int packed_size;
+} datamap_t;
+
 // TOOD this is a circular ref to the enum - the header files could be better organized!
-typedef enum ch_err (*ch_save_restore_op_calc_restored_size)(const struct ch_type_description* td, struct ch_byte_reader* br);
-typedef enum ch_err (*ch_save_restore_op_restore)(const struct ch_type_description* td, struct ch_byte_reader* br, struct ch_byte_writer* bw);
+typedef enum ch_err (*ch_save_restore_op_calc_restored_size)(const struct ch_type_description* td,
+                                                             struct ch_byte_reader* br);
+
+typedef enum ch_err (*ch_save_restore_op_restore)(const struct ch_type_description* td,
+                                                  struct ch_byte_reader* br,
+                                                  struct ch_byte_writer* bw);
 
 typedef struct ch_save_restore_ops {
     // ch_save_restore_op_calc_restored_size calc_restored_size;

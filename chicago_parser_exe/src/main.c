@@ -1,10 +1,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#pragma comment(lib, "Pathcch.lib")
-
-#include "ch_save.h"
 #include "ch_inject.h"
+#include "ch_save.h"
+
+#include <PathCch.h>
+
+#pragma comment(lib, "Pathcch.lib")
 
 #define MAX_SELECT_GAMES 9
 

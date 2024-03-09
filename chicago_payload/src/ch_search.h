@@ -1,19 +1,12 @@
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#include <Psapi.h>
-#include <TlHelp32.h>
-#include <libloaderapi.h>
-#include <processthreadsapi.h>
-
+#include "ch_payload_comm.h"
 #include "ch_save.h"
 
-typedef struct ch_search_result {
-    int n_datamaps;
-} ch_search_result;
+// looks for a datamap in the .data section by the datamap name
+datamap_t* ch_find_datamap_by_name(const ch_mod_info* module_info, const char* name);
 
-// returns true if the given process has client, server, engine, & vphysics dlls
-bool ch_proc_has_required_modules(DWORD proc_id);
-
-ch_err ch_search_pe_file(ch_search_result* result);
+const void* ch_memmem(const void* restrict haystack,
+                      size_t haystack_len,
+                      const void* restrict needle,
+                      size_t needle_len);
