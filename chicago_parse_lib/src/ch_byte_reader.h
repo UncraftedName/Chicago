@@ -36,12 +36,11 @@ inline bool ch_br_read(ch_byte_reader* br, void* dest, size_t n)
     if (ch_br_could_skip(br, n)) {
         memcpy(dest, br->cur, n);
         br->cur += n;
-        return true;
     } else {
         br->overflowed = true;
         br->cur = br->end;
-        return false;
     }
+    return !br->overflowed;
 }
 
 /*

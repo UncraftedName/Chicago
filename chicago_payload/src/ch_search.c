@@ -44,13 +44,63 @@ TODO: dear lord how the hell do we get linked names (e.g. prop_physics)?
 Use this for datamap lookup? https://github.com/fanf2/qp
 */
 
-#include "ch_search.h"
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <Psapi.h>
+#include <TlHelp32.h>
+#include <libloaderapi.h>
+#include <processthreadsapi.h>
+#pragma warning(push, 3)
+#include <DbgHelp.h>
+#pragma warning(pop)
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 
 #include "ch_search.h"
+#include "ch_payload_comm_shared.h"
+
+#pragma comment(lib, "dbghelp.lib")
+
+// TODO handle error messages in all cases
+bool ch_get_module_info(ch_mod_info infos[CH_MOD_COUNT])
+{
+    BYTE* base_addresses[CH_MOD_COUNT];
+    if (!ch_get_required_modules(0, base_addresses))
+        return false;
+
+    for (int i = 0; i < CH_MOD_COUNT; i++) {
+        ch_mod_info* mod_info = &infos[i];
+        mod_info->base = base_addresses[i];
+        unsigned int sec_flags = 0, target_flags = (1 << CH_SEC_COUNT) - 1;
+        PIMAGE_NT_HEADERS header = ImageNtHeader(base_addresses[i]);
+        PIMAGE_SECTION_HEADER section = IMAGE_FIRST_SECTION(header);
+        for (int fs = 0; fs < header->FileHeader.NumberOfSections && sec_flags != target_flags; fs++) {
+            for (int ms = 0; ms < CH_SEC_COUNT; ms++) {
+                if (!_stricmp((const char*)section->Name, ch_mod_sec_names[ms])) {
+                    mod_info->sections[ms].start = base_addresses[i] + section->VirtualAddress;
+                    mod_info->sections[ms].len = section->Misc.VirtualSize;
+                    sec_flags |= 1 << ms;
+                    break;
+                }
+            }
+            ++section;
+        }
+        if (sec_flags != target_flags)
+            return false;
+
+        // TODO this doesn't work :(( might have to look for the symbols manually
+        // mod_info->cinit = (void*)GetProcAddress(mod_info->base, "__cinit");
+        // if (!mod_info->cinit)
+        //     return false;
+        // mod_info->atexit = (void*)GetProcAddress(mod_info->base, "_atexit");
+        // if (!mod_info->atexit)
+        //     return false;
+    }
+
+    return true;
+}
 
 const void* ch_memmem(const void* restrict haystack,
                       size_t haystack_len,
@@ -71,12 +121,19 @@ const void* ch_memmem(const void* restrict haystack,
 * 3) determine the address of the datamap from that function
 * 4) verify that the datamap is valid
 */
+// this is by no means the "best", "most correct", "easiest", or the fastest way to do this
 datamap_t* ch_find_datamap_by_name(const ch_mod_info* module_info, const char* name)
 {
     size_t name_len = strlen(name);
     const char* sec_data = module_info->sections[CH_SEC_RDATA].start;
     size_t sec_size = module_info->sections[CH_SEC_RDATA].len;
-    const void* match = ch_memmem(sec_data, sec_size, name, name_len + 1);
+    // find the string
+    const void* str_match = ch_memmem(sec_data, sec_size, name, name_len + 1);
+    // find an instruction which uses the string
+    const void* match = ch_memmem(module_info->sections[CH_SEC_TEXT].start,
+                                  module_info->sections[CH_SEC_TEXT].len,
+                                  &str_match,
+                                  sizeof str_match);
     (void)match;
     int x = 1;
     (void)x;
