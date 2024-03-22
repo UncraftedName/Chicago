@@ -9,6 +9,13 @@
 #include "ch_payload_comm_shared.h"
 #include "SDK/datamap.h"
 
+#if 0
+#define CH_PL_PRINTF(...) printf("[ch_payload] " __VA_ARGS__);
+#else
+#define CH_PL_PRINTF(...) \
+    while (0) {}
+#endif
+
 enum ch_mod_section {
     CH_SEC_TEXT,
     CH_SEC_DATA,

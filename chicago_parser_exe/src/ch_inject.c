@@ -10,6 +10,7 @@
 #include <stdlib.h>
 
 #include "ch_inject.h"
+#include "ch_msgpack.h"
 
 #pragma comment(lib, "Pathcch.lib")
 
@@ -27,8 +28,7 @@ typedef enum ch_exit_code {
 typedef struct ch_recv_ctx {
     ch_exit_code next_exit_code;
     ch_comm_msg_type log_level;
-    unsigned char* buf;
-    size_t buf_size;
+    msgpack_zone mp_zone;
     HANDLE pipe;
     HANDLE game;
     HANDLE wait_event;
@@ -60,7 +60,6 @@ void ch_free_ctx(ch_recv_ctx* ctx)
         CloseHandle(ctx->pipe);
     if (ctx->wait_event)
         CloseHandle(ctx->wait_event);
-    free(ctx->buf);
 }
 
 // TODO now that we've broken up the whole process into several functions it should be much easier to just return early instead of exiting the whole thread
@@ -276,25 +275,24 @@ void ch_await_connect(ch_recv_ctx* ctx)
         ch_err_and_exit(ctx, GetLastError(), "GetOverlappedResult (ConnectNamedPipe) failed:");
 }
 
-bool ch_process_msg(unsigned char* buf, size_t buf_size)
+// return true if we're expecting more messages
+bool ch_process_msg(ch_recv_ctx* ctx, const char* buf, size_t buf_size)
 {
-    assert(buf_size == 4);
-    switch (*(ch_comm_msg_type*)buf) {
-        case CH_MSG_HELLO:
-            printf("HELLO FROM PAYLOAD\n");
-            return true;
-        case CH_MSG_GOODBYE:
-            printf("GOODBYE FROM PAYLOAD\n");
-            return false;
-        default:
-            return false;
-            break;
-    }
+    msgpack_object o;
+    msgpack_unpack(buf, buf_size, NULL, &ctx->mp_zone, &o);
+    msgpack_object_print(stdout, o);
+    printf("\n");
+    return true;
 }
 
 // client has connected, process requests
 void ch_recv_loop(ch_recv_ctx* ctx)
 {
+    char* buf = malloc(CH_PIPE_INIT_BUF_SIZE);
+    if (!buf)
+        ch_err_and_exit(ctx, ERROR_SUCCESS, "Out of memory (ch_recv_loop malloc).");
+    size_t buf_size = CH_PIPE_INIT_BUF_SIZE;
+
     size_t msg_len = 0;
     BOOL try_read = TRUE;
     BOOL read_success = FALSE;
@@ -303,11 +301,11 @@ void ch_recv_loop(ch_recv_ctx* ctx)
 
     for (;;) {
         if (try_read)
-            read_success = ReadFile(ctx->pipe, ctx->buf + msg_len, ctx->buf_size - msg_len, &bytes_recvd, &overlapped);
+            read_success = ReadFile(ctx->pipe, buf + msg_len, buf_size - msg_len, &bytes_recvd, &overlapped);
         try_read = TRUE;
         if (read_success) {
             msg_len += bytes_recvd;
-            if (!ch_process_msg(ctx->buf, msg_len))
+            if (!ch_process_msg(ctx, buf, msg_len))
                 break;
             msg_len = 0;
             continue;
@@ -316,14 +314,16 @@ void ch_recv_loop(ch_recv_ctx* ctx)
         switch (err) {
             case ERROR_MORE_DATA:
                 // bytes_recvd is 0 in this case even though we receive bytes, so use buf_size instead
-                msg_len += ctx->buf_size;
-                unsigned char* new_buf = realloc(ctx->buf, ctx->buf_size * 2);
+                msg_len += buf_size;
+                char* new_buf = realloc(buf, buf_size * 2);
                 if (!new_buf)
-                    ch_err_and_exit(ctx, ERROR_SUCCESS, "Out of memory (ReadFile realloc).");
-                ctx->buf_size *= 2;
+                    ch_err_and_exit(ctx, ERROR_SUCCESS, "Out of memory (ch_recv_loop realloc).");
+                buf = new_buf;
+                buf_size *= 2;
                 break;
             case ERROR_BROKEN_PIPE:
                 ch_err_and_exit(ctx, ERROR_SUCCESS, "Payload disconnected before sending goodbye message.");
+                // TODO yeah don't return, when changing all of the errors to be returns instead of exit threads make sure to hit the free at the end of this function
                 return;
             case ERROR_IO_PENDING:
                 DWORD wait_result = WaitForSingleObject(ctx->wait_event, INFINITE);
@@ -337,6 +337,7 @@ void ch_recv_loop(ch_recv_ctx* ctx)
                 return;
         }
     }
+    free(buf);
 }
 
 void ch_do_inject_and_recv_maps(ch_comm_msg_type log_level)
@@ -346,15 +347,13 @@ void ch_do_inject_and_recv_maps(ch_comm_msg_type log_level)
     ch_recv_ctx ctx = {
         .next_exit_code = CH_EC_OUT_OF_MEMORY,
         .log_level = log_level,
-        .buf = malloc(CH_PIPE_INIT_BUF_SIZE),
-        .buf_size = CH_PIPE_INIT_BUF_SIZE,
         .pipe = INVALID_HANDLE_VALUE,
         .game = INVALID_HANDLE_VALUE,
         .wait_event = NULL,
         .remote_thread_alloc = NULL,
     };
 
-    if (!ctx.buf)
+    if (!msgpack_zone_init(&ctx.mp_zone, CH_PIPE_INIT_BUF_SIZE / sizeof(void*)))
         ch_err_and_exit(&ctx, ERROR_SUCCESS, "Out of memory (ch_recv_ctx init).");
 
     ch_create_pipe(&ctx);
