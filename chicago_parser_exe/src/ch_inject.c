@@ -353,8 +353,10 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
     * 
     * In case the buffer needs to be expanded, we will do multiple calls to read & each one
     * will continue reading where the previous one left off. I'm *pretty sure* that it's the
-    * overlapped structure that keeps track of where to read next, but for some reason we
-    * don't need to reset the structure in order to start reading at the beginning.
+    * overlapped structure that keeps track of where to read next, but we don't need to reset
+    * the structure in order to start reading at the beginning of the next message (I couldn't
+    * find any mention of this in the docs). Also, ReadFile and GetOverlappedResult functions
+    * will reset the wait_event to non-signalled so we don't have to worry about that.
     */
     while (state == CH_RS_RUNNING) {
 
@@ -393,7 +395,7 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
                 * read_n_bytes is 0 for some reason even though we did read bytes, so
                 * increment the msg_len by however much we specified in the read call.
                 */
-                msg_len += buf_size;
+                msg_len += buf_size - msg_len;
                 char* new_buf = realloc(recv_buf, buf_size * 2);
                 if (new_buf) {
                     recv_buf = new_buf;
