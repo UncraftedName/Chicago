@@ -9,7 +9,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#include "ch_inject.h"
+#include "ch_recv.h"
 #include "ch_msgpack.h"
 
 #pragma comment(lib, "Pathcch.lib")
@@ -17,7 +17,7 @@
 #define MAX_SELECT_GAMES 9
 
 typedef struct ch_recv_ctx {
-    ch_comm_msg_type log_level;
+    ch_log_level log_level;
     msgpack_zone mp_zone;
     HANDLE pipe;
     HANDLE game;
@@ -25,50 +25,50 @@ typedef struct ch_recv_ctx {
     LPVOID remote_thread_alloc;
 } ch_recv_ctx;
 
-#define _CH_LOG(pctx, level, ...)                                      \
-    {                                                                  \
-        assert(level == CH_MSG_LOG_INFO || level == CH_MSG_LOG_ERROR); \
-        if ((level) >= (pctx)->log_level)                              \
-            fprintf(stderr, __VA_ARGS__);                              \
-    }
+void ch_vlog(const ch_recv_ctx* ctx, ch_log_level level, const char* fmt, va_list vargs)
+{
+    if (level < ctx->log_level)
+        return;
+    vfprintf(stderr, fmt, vargs);
+}
 
-#define CH_LOG_INFO(pctx, ...) _CH_LOG(pctx, CH_MSG_LOG_INFO, __VA_ARGS__)
-#define CH_LOG_ERROR(pctx, ...) _CH_LOG(pctx, CH_MSG_LOG_ERROR, __VA_ARGS__)
-
-#define _CH_VLOG(pctx, level, fmt, va)                                 \
-    {                                                                  \
-        assert(level == CH_MSG_LOG_INFO || level == CH_MSG_LOG_ERROR); \
-        if ((level) >= (pctx)->log_level)                              \
-            vfprintf(stderr, fmt, va);                                 \
-    }
-
-#define CH_VLOG_INFO(pctx, fmt, va) _CH_VLOG(pctx, CH_MSG_LOG_INFO, fmt, va)
-#define CH_VLOG_ERROR(pctx, fmt, va) _CH_VLOG(pctx, CH_MSG_LOG_ERROR, fmt, va)
-
-// print the fmt followed by the winapi_error if it's not ERROR_SUCCESS
-void ch_log_sys_err(ch_recv_ctx* ctx, DWORD winapi_error, const char* fmt, ...)
+void ch_log_info(const ch_recv_ctx* ctx, const char* fmt, ...)
 {
     va_list va;
     va_start(va, fmt);
-    CH_VLOG_ERROR(ctx, fmt, va);
+    ch_vlog(ctx, CH_LL_INFO, fmt, va);
     va_end(va);
-    if (winapi_error != ERROR_SUCCESS) {
-        CH_LOG_ERROR(ctx, " (GLE=%lu) ", winapi_error);
-        char err_msg[1024];
-        DWORD err_msg_len = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-                                           NULL,
-                                           winapi_error,
-                                           MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
-                                           err_msg,
-                                           sizeof err_msg,
-                                           NULL);
+}
 
-        if (err_msg_len == 0) {
-            CH_LOG_ERROR(ctx, "FormatMessageA failed: (GLE=%lu)", GetLastError());
-        } else {
-            CH_LOG_ERROR(ctx, "%s", err_msg);
-        }
-    }
+void ch_log_error(const ch_recv_ctx* ctx, const char* fmt, ...)
+{
+    va_list va;
+    va_start(va, fmt);
+    ch_vlog(ctx, CH_LL_ERROR, fmt, va);
+    va_end(va);
+}
+
+// print the fmt followed by the winapi_error
+void ch_log_sys_err(const ch_recv_ctx* ctx, DWORD winapi_error, const char* fmt, ...)
+{
+    va_list va;
+    va_start(va, fmt);
+    ch_vlog(ctx, CH_LL_ERROR, fmt, va);
+    va_end(va);
+    ch_log_error(ctx, " (GLE=%lu)", winapi_error);
+    char err_msg[1024];
+    DWORD err_msg_len = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+                                       NULL,
+                                       winapi_error,
+                                       MAKELANGID(LANG_ENGLISH, SUBLANG_ENGLISH_US),
+                                       err_msg,
+                                       sizeof err_msg,
+                                       NULL);
+
+    if (err_msg_len == 0)
+        ch_log_error(ctx, " FormatMessageA failed: (GLE=%lu)", GetLastError());
+    else
+        ch_log_error(ctx, " %s", err_msg);
 }
 
 // setup ctx->pipe
@@ -86,7 +86,7 @@ BOOL ch_create_pipe(ch_recv_ctx* ctx)
     if (ctx->pipe == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
         if (err == ERROR_PIPE_BUSY) {
-            CH_LOG_ERROR(ctx,
+            ch_log_error(ctx,
                          "CreateNamedPipe failed, make sure you're not running another instance of this application.");
         } else {
             ch_log_sys_err(ctx, err, "CreateNamedPipe failed:");
@@ -116,7 +116,7 @@ BOOL ch_find_game(ch_recv_ctx* ctx)
             if (ch_get_required_modules(pe32w.th32ProcessID, NULL)) {
                 proc_ids[num_found_games] = pe32w.th32ProcessID;
                 if (++num_found_games >= MAX_SELECT_GAMES) {
-                    CH_LOG_ERROR(ctx,
+                    ch_log_error(ctx,
                                  "Found more than %d candidate source engine games, close some and try again.",
                                  MAX_SELECT_GAMES);
                     CloseHandle(snap);
@@ -128,7 +128,7 @@ BOOL ch_find_game(ch_recv_ctx* ctx)
     CloseHandle(snap);
 
     if (num_found_games == 0) {
-        CH_LOG_ERROR(ctx, "No candidate source engine games found, launch a source game and try again.");
+        ch_log_error(ctx, "No candidate source engine games found, launch a source game and try again.");
         return FALSE;
     }
 
@@ -181,7 +181,7 @@ BOOL ch_find_game(ch_recv_ctx* ctx)
     // in either case, keep the handle to the game process open, we'll need it to inject the payload
     if (num_found_games == 1) {
         // exactly one candidate game was found, choose it
-        CH_LOG_INFO(ctx, "Choosing source game: %s\n", msg);
+        ch_log_info(ctx, "Choosing source game: %s\n", msg);
         ctx->game = proc_handles[0];
     } else {
         // we found multiple candidate games, print them and let the user decide which one to use
@@ -220,7 +220,7 @@ BOOL ch_inject(ch_recv_ctx* ctx)
     if (path_cch_res == S_OK)
         path_cch_res = PathCchCombine(payload_path, MAX_PATH, payload_path, L"chicago_payload.dll");
     if (path_cch_res != S_OK) {
-        CH_LOG_ERROR(ctx, "A PathCch function failed.");
+        ch_log_error(ctx, "A PathCch function failed.");
         return FALSE;
     }
 
@@ -296,7 +296,7 @@ BOOL ch_await_connect(ch_recv_ctx* ctx)
             ch_log_sys_err(ctx, GetLastError(), "WaitForSingleObject failed:");
             return FALSE;
         case WAIT_TIMEOUT:
-            ch_log_sys_err(ctx, ERROR_SUCCESS, "Timed out waiting for payload (WaitForSingleObject).");
+            ch_log_error(ctx, "Timed out waiting for payload (WaitForSingleObject).");
             return FALSE;
         default:
             break;
@@ -326,7 +326,7 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
 {
     char* recv_buf = malloc(CH_PIPE_INIT_BUF_SIZE);
     if (!recv_buf) {
-        ch_log_sys_err(ctx, ERROR_SUCCESS, "Out of memory (ch_recv_loop malloc).");
+        ch_log_error(ctx, "Out of memory (ch_recv_loop malloc).");
         return FALSE;
     }
     size_t buf_size = CH_PIPE_INIT_BUF_SIZE;
@@ -372,7 +372,8 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
             msg_len = 0;
             continue;
         } else if (n_loops_without_success++ > 5) {
-            CH_LOG_ERROR(ctx, "recv loop has failed too many times, something fishy is going on");
+            ch_log_error(ctx, "recv loop has failed too many times, something fishy is going on");
+            state = CH_RS_ERROR;
             break;
         }
 
@@ -385,7 +386,7 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
                     read_success = GetOverlappedResult(ctx->pipe, &overlapped, &read_n_bytes, FALSE);
                     have_read_result = TRUE;
                 } else {
-                    ch_log_sys_err(ctx, GetLastError(), "WaitForSingleObject failed");
+                    ch_log_sys_err(ctx, GetLastError(), "WaitForSingleObject failed:");
                     state = CH_RS_ERROR;
                 }
                 break;
@@ -401,12 +402,12 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
                     recv_buf = new_buf;
                     buf_size *= 2;
                 } else {
-                    CH_LOG_ERROR(ctx, "Out of memory (ch_recv_loop realloc).");
+                    ch_log_error(ctx, "Out of memory (ch_recv_loop realloc).");
                     state = CH_RS_ERROR;
                 }
                 break;
             case ERROR_BROKEN_PIPE:
-                CH_LOG_ERROR(ctx, "Payload disconnected before sending goodbye message.");
+                ch_log_error(ctx, "Payload disconnected before sending goodbye message.");
                 state = CH_RS_ERROR;
                 break;
             default:
@@ -416,6 +417,7 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
         }
     }
     free(recv_buf);
+    assert(state == CH_RS_ERROR || state == CH_RS_DONE);
     return state == CH_RS_DONE;
 }
 
@@ -425,10 +427,8 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
             ok = x;     \
     }
 
-void ch_do_inject_and_recv_maps(ch_comm_msg_type log_level)
+void ch_do_inject_and_recv_maps(ch_log_level log_level)
 {
-    assert(log_level == CH_MSG_LOG_INFO || log_level == CH_MSG_LOG_ERROR);
-
     ch_recv_ctx rctx = {
         .log_level = log_level,
         .pipe = INVALID_HANDLE_VALUE,
@@ -439,7 +439,7 @@ void ch_do_inject_and_recv_maps(ch_comm_msg_type log_level)
     ch_recv_ctx* ctx = &rctx;
 
     if (!msgpack_zone_init(&ctx->mp_zone, CH_PIPE_INIT_BUF_SIZE / sizeof(void*))) {
-        CH_LOG_ERROR(ctx, "Out of memory (ch_recv_ctx init).");
+        ch_log_error(ctx, "Out of memory (ch_recv_ctx init).");
         return;
     }
 
@@ -452,9 +452,9 @@ void ch_do_inject_and_recv_maps(ch_comm_msg_type log_level)
     /*
     * In case connecting fails, if we try to cleanup ctx we might end up deallocating memory
     * that is currently being read by LoadLibrary, which would crash the game. I would like
-    * to avoid that. However, we don't actually know for that that LoadLibrary is done with
-    * that memory until the payload connects to us. If an error happens before then, avoid
-    * freeing that memory.
+    * to avoid that. However, we don't actually know that LoadLibrary is done with that
+    * memory until the payload connects to us. If an error happens before then, avoid
+    * freeing that memory. This can cause a small memory leak in the game, boohoo.
     */
     LPVOID tmp_alloc = ctx->remote_thread_alloc;
     ctx->remote_thread_alloc = NULL;
@@ -462,6 +462,8 @@ void ch_do_inject_and_recv_maps(ch_comm_msg_type log_level)
     CH_RUN_IF_OK(TRUE; ctx->remote_thread_alloc = tmp_alloc);
 
     CH_RUN_IF_OK(ch_recv_loop(ctx));
+
+    // TODO: we can destroy all the pipe stuff in ctx, now we should verify that the messages make sense
 
     // destroy everything in ctx
 
@@ -474,6 +476,4 @@ void ch_do_inject_and_recv_maps(ch_comm_msg_type log_level)
         CloseHandle(ctx->pipe);
     if (ctx->wait_event)
         CloseHandle(ctx->wait_event);
-
-    CH_LOG_INFO(ctx, "Done.\n");
 }

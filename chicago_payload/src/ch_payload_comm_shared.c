@@ -15,18 +15,18 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT])
 
     unsigned int mod_flags = 0, target_flags = (1 << CH_MOD_COUNT) - 1;
 
-    MODULEENTRY32W me32w = {.dwSize = sizeof(MODULEENTRY32W)};
-    if (Module32FirstW(snap, &me32w)) {
+    MODULEENTRY32 me32 = {.dwSize = sizeof(MODULEENTRY32)};
+    if (Module32First(snap, &me32)) {
         do {
             for (int i = 0; i < CH_MOD_COUNT; i++) {
-                if (wcscmp(ch_required_module_names[i], me32w.szModule))
+                if (strcmp(ch_required_module_names[i], me32.szModule))
                     continue;
                 mod_flags |= 1 << i;
                 if (base_addresses)
-                    base_addresses[i] = me32w.modBaseAddr;
+                    base_addresses[i] = me32.modBaseAddr;
                 break;
             }
-        } while (mod_flags != target_flags && Module32NextW(snap, &me32w));
+        } while (mod_flags != target_flags && Module32Next(snap, &me32));
     }
     CloseHandle(snap);
     return mod_flags == target_flags;

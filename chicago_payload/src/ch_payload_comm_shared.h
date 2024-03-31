@@ -16,15 +16,6 @@
 
 #define CH_PIPE_INIT_BUF_SIZE (1024 * 4)
 
-// these return codes aren't checked for anywhere atm since the payload immediately creates a new thread
-typedef enum ch_payload_exit_code {
-    CH_PAYLOAD_EXIT_OK = 0,
-    CH_PAYLOAD_EXIT_PIPE_WAIT_FAIL,
-    CH_PAYLOAD_EXIT_PIPE_CONNECT_FAIL,
-    CH_PAYLOAD_EXIT_PIPE_SEND_FAIL,
-    CH_PAYLOAD_EXIT_OUT_OF_MEMORY,
-} ch_payload_exit_code;
-
 typedef enum ch_game_module {
     CH_MOD_CLIENT,
     CH_MOD_SERVER,
@@ -33,11 +24,11 @@ typedef enum ch_game_module {
     CH_MOD_COUNT,
 } ch_game_module;
 
-static const wchar_t* const ch_required_module_names[CH_MOD_COUNT] = {
-    L"client.dll",
-    L"server.dll",
-    L"engine.dll",
-    L"vphysics.dll",
+static const char* const ch_required_module_names[CH_MOD_COUNT] = {
+    "client.dll",
+    "server.dll",
+    "engine.dll",
+    "vphysics.dll",
 };
 
 typedef enum ch_comm_msg_type {

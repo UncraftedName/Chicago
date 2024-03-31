@@ -40,6 +40,12 @@ We have 4 options to extract datamaps:
 
 
 TODO: dear lord how the hell do we get linked names (e.g. prop_physics)?
+CEntityFactory can be gotten from dumpentityfactories
+for finding maps by name - look for where the string is used, find the start of that function and call it (it's protected with a static initializer thingy)
+
+here's a neat idea - look at all the imports in the dll (these will be in .rdata) and fin the last one. the static init list should be right after thatb
+use a pattern on this to look for static inits that just do a call(0) - these are datamapinit candidates. 
+
 
 Use this for datamap lookup? https://github.com/fanf2/qp
 */
@@ -60,18 +66,67 @@ Use this for datamap lookup? https://github.com/fanf2/qp
 
 #include "ch_search.h"
 #include "ch_payload_comm_shared.h"
+#include "ch_send.h"
 
 #pragma comment(lib, "dbghelp.lib")
 
-// TODO handle error messages in all cases
-bool ch_get_module_info(ch_mod_info infos[CH_MOD_COUNT])
+void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scratch)
+{
+    while (isspace(*str))
+        str++;
+    out->len = 0;
+    // first just count the number of bytes in this pattern and make sure it's a valid pattern
+    const char* s = str;
+    while (*s) {
+        for (int i = 0; i < 2; i++) {
+            int c = toupper(*s);
+            assert(c == '?' || isxdigit(c));
+        }
+        out->len++;
+        s += 2;
+        while (isspace(*s))
+            s++;
+    }
+    // now go through it again and fill the scratch buffer
+    out->bytes = scratch;
+    out->wildmask = scratch + out->len;
+    memset(scratch, 0, out->len + (out->len + 7) / 8);
+    s = str;
+    size_t i = 0;
+    while (*s) {
+        if (*s == '?') {
+            out->wildmask[i / 8] |= 1 << (i & 7);
+        } else {
+            int c1 = toupper(*s);
+            int c2 = toupper(*(s + 1));
+            out->bytes[i] |= (c1 >= 'A' ? c1 - 'A' + 10 : c1 - '0') << 4;
+            out->bytes[i] |= c2 >= 'A' ? c2 - 'A' + 10 : c2 - '0';
+        }
+        i++;
+        s += 2;
+        while (isspace(*s))
+            s++;
+    }
+    assert(i == out->len);
+}
+
+// DataDescInit pattern: 6A 00 E8 ?? ?? ?? ?? 83 C4 04 A3 ?? ?? ?? ?? C3 (needs 18 bytes of scratch space)
+bool ch_pattern_match(const unsigned char* mem, ch_pattern pattern)
+{
+    for (size_t i = 0; i < pattern.len; i++)
+        if (!(pattern.wildmask[i / 8] & (1 << (i & 7))) && pattern.bytes[i] != mem[i])
+            return false;
+    return true;
+}
+
+void ch_get_module_info(ch_send_ctx* ctx, ch_search_ctx* sc)
 {
     BYTE* base_addresses[CH_MOD_COUNT];
     if (!ch_get_required_modules(0, base_addresses))
-        return false;
+        ch_send_err_and_exit(ctx, "Failed to find required modules");
 
     for (int i = 0; i < CH_MOD_COUNT; i++) {
-        ch_mod_info* mod_info = &infos[i];
+        ch_mod_info* mod_info = &sc->mods[i];
         mod_info->base = base_addresses[i];
         unsigned int sec_flags = 0, target_flags = (1 << CH_SEC_COUNT) - 1;
         PIMAGE_NT_HEADERS header = ImageNtHeader(base_addresses[i]);
@@ -88,18 +143,8 @@ bool ch_get_module_info(ch_mod_info infos[CH_MOD_COUNT])
             ++section;
         }
         if (sec_flags != target_flags)
-            return false;
-
-        // TODO this doesn't work :(( might have to look for the symbols manually
-        // mod_info->cinit = (void*)GetProcAddress(mod_info->base, "__cinit");
-        // if (!mod_info->cinit)
-        //     return false;
-        // mod_info->atexit = (void*)GetProcAddress(mod_info->base, "_atexit");
-        // if (!mod_info->atexit)
-        //     return false;
+            ch_send_err_and_exit(ctx, "Failed to find required sections in %s", ch_mod_sec_names[i]);
     }
-
-    return true;
 }
 
 const void* ch_memmem(const void* restrict haystack,

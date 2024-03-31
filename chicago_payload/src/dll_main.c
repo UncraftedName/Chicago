@@ -1,29 +1,14 @@
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#include <libloaderapi.h>
+#include "ch_send.h"
 
-#include <stdio.h>
+#pragma warning(push, 3)
+#include <DbgHelp.h>
+#pragma warning(pop)
 
-#include "ch_search.h"
-#include "ch_msgpack.h"
+#pragma comment(lib, "dbghelp.lib")
 
-// checked msgpack pack
-#define CH_CHK_PACK(x)                  \
-    {                                   \
-        int _mp_ret = msgpack_pack_##x; \
-        if (_mp_ret != 0)               \
-            return _mp_ret;             \
-    }
-
-typedef struct ch_send_ctx {
-    HANDLE module_;
-    HANDLE pipe;
-    msgpack_sbuffer mp_buf;
-    msgpack_packer mp_pk;
-} ch_send_ctx;
-
-static void ch_clean_exit(ch_send_ctx* ctx, ch_payload_exit_code exit_code)
+void ch_clean_exit(ch_send_ctx* ctx, DWORD exit_code)
 {
+    // assert(exit_code == 0);
     if (ctx->pipe != INVALID_HANDLE_VALUE)
         CloseHandle(ctx->pipe);
     msgpack_sbuffer_destroy(&ctx->mp_buf);
@@ -34,68 +19,13 @@ static void ch_connect_pipe(ch_send_ctx* ctx)
 {
     if (!WaitNamedPipeA(CH_PIPE_NAME, CH_PIPE_TIMEOUT_MS)) {
         CH_PL_PRINTF("WaitNamedPipe failed (GLE=%lu)\n", GetLastError());
-        ch_clean_exit(ctx, CH_PAYLOAD_EXIT_PIPE_WAIT_FAIL);
+        ch_clean_exit(ctx, 1);
     }
     ctx->pipe = CreateFileA(CH_PIPE_NAME, GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
     if (ctx->pipe == INVALID_HANDLE_VALUE) {
         CH_PL_PRINTF("CreateFileA failed (GLE=%lu)\n", GetLastError());
-        ch_clean_exit(ctx, CH_PAYLOAD_EXIT_PIPE_CONNECT_FAIL);
+        ch_clean_exit(ctx, 1);
     }
-}
-
-static void ch_send_msgpack(ch_send_ctx* ctx)
-{
-    BOOL success = WriteFile(ctx->pipe, ctx->mp_buf.data, ctx->mp_buf.size, NULL, NULL);
-    if (!success)
-        ch_clean_exit(ctx, CH_PAYLOAD_EXIT_PIPE_SEND_FAIL);
-}
-
-// inits the msg with {"type": type, "data": ...}
-static int ch_msg_preamble(ch_send_ctx* ctx, ch_comm_msg_type type)
-{
-    msgpack_sbuffer_clear(&ctx->mp_buf);
-    msgpack_packer* pk = &ctx->mp_pk;
-    CH_CHK_PACK(map(pk, 2));
-    CH_CHK_PACK(str_with_body(pk, CHMPK_MSG_TYPE, strlen(CHMPK_MSG_TYPE)));
-    CH_CHK_PACK(int(pk, type));
-    CH_CHK_PACK(str_with_body(pk, CHMPK_MSG_DATA, strlen(CHMPK_MSG_DATA)));
-    return 0;
-}
-
-static void ch_send_simple(ch_send_ctx* ctx, ch_comm_msg_type type)
-{
-    assert(type == CH_MSG_HELLO || type == CH_MSG_GOODBYE);
-    if (ch_msg_preamble(ctx, type) || msgpack_pack_nil(&ctx->mp_pk))
-        ch_clean_exit(ctx, CH_PAYLOAD_EXIT_OUT_OF_MEMORY);
-    ch_send_msgpack(ctx);
-}
-
-static void ch_send_vstrf(ch_send_ctx* ctx, ch_comm_msg_type level, const char* fmt, va_list vargs)
-{
-    assert(level == CH_MSG_LOG_INFO || level == CH_MSG_LOG_ERROR);
-    char buf[1024];
-    int len = vsnprintf(buf, sizeof buf, fmt, vargs);
-    len = min(sizeof(buf) - 1, len);
-    if (ch_msg_preamble(ctx, level) || msgpack_pack_str_with_body(&ctx->mp_pk, buf, len))
-        ch_clean_exit(ctx, CH_PAYLOAD_EXIT_OUT_OF_MEMORY);
-    ch_send_msgpack(ctx);
-}
-
-static void ch_send_log_info(ch_send_ctx* ctx, const char* fmt, ...)
-{
-    va_list vargs;
-    va_start(vargs, fmt);
-    ch_send_vstrf(ctx, CH_MSG_LOG_INFO, fmt, vargs);
-    va_end(vargs);
-}
-
-static void ch_send_err_and_exit(ch_send_ctx* ctx, ch_payload_exit_code exit_code, const char* fmt, ...)
-{
-    va_list vargs;
-    va_start(vargs, fmt);
-    ch_send_vstrf(ctx, CH_MSG_LOG_ERROR, fmt, vargs);
-    va_end(vargs);
-    ch_clean_exit(ctx, exit_code);
 }
 
 void __stdcall main(HINSTANCE h_mod)
@@ -112,16 +42,104 @@ void __stdcall main(HINSTANCE h_mod)
     ch_send_ctx* ctx = &rctx;
 
     ch_connect_pipe(ctx);
-    ch_send_simple(ctx, CH_MSG_HELLO);
+    ch_send_wave(ctx, CH_MSG_HELLO);
 
-    /*ch_mod_info mod_infos[CH_MOD_COUNT];
-    if (!ch_get_module_info(mod_infos)) {
-        // send error here :)
+    ch_search_ctx sc;
+
+    ch_get_module_info(ctx, &sc);
+
+    // PIMAGE_NT_HEADERS headers = ImageNtHeader(ctx->mod_infos[CH_MOD_SERVER].base);
+    /*PIMAGE_SECTION_HEADER header;
+    ULONG size;
+    char* base = ctx->mod_infos[CH_MOD_ENGINE].base;
+    PIMAGE_IMPORT_DESCRIPTOR import_dir =
+        (PIMAGE_IMPORT_DESCRIPTOR)ImageDirectoryEntryToDataEx(base, TRUE, IMAGE_DIRECTORY_ENTRY_IMPORT, &size, &header);
+
+    for (; import_dir->FirstThunk; import_dir++) {
+
+        PIMAGE_THUNK_DATA32 thunk = base + import_dir->OriginalFirstThunk;
+        for (; thunk->u1.Function; thunk++) {
+            if (!IMAGE_SNAP_BY_ORDINAL32(thunk->u1.AddressOfData)) {
+                PIMAGE_IMPORT_BY_NAME import_name = base + thunk->u1.AddressOfData;
+                ch_send_log_info(ctx,
+                                 "DLL: %s, Symbol: %s, Hint: %d",
+                                 base + import_dir->Name,
+                                 import_name->Name,
+                                 import_name->Hint);
+            } else {
+                ch_send_log_info(ctx,
+                                 "DLL: %s, Ordinal: %d",
+                                 base + import_dir->Name,
+                                 IMAGE_ORDINAL32(thunk->u1.AddressOfData));
+            }
+        }
+    }*/
+
+    /*for (; import_dir->Characteristics; import_dir++) {
+
+        PIMAGE_THUNK_DATA32 thunk = base + import_dir->OriginalFirstThunk;
+        for (; thunk->u1.AddressOfData; thunk++) {
+            PIMAGE_IMPORT_BY_NAME import_name = base + thunk->u1.AddressOfData;
+            ch_send_log_info(ctx, "DLL: %s, Symbol: %s", base + import_dir->Name, import_name->Name);
+        }
+    }*/
+
+    struct {
+        const char* str;
+        const void* p;
+    } str_infos[] = {
+        {.str = "dumpentityfactories"},
+        {.str = "Lists all entity factory names."},
+    };
+
+    ch_mod_sec server_rdata = sc.mods[CH_MOD_SERVER].sections[CH_SEC_RDATA];
+    for (int i = 0; i < 2; i++) {
+        str_infos[i].p =
+            ch_memmem_unique(server_rdata.start, server_rdata.len, str_infos[i].str, strlen(str_infos[i].str) + 1);
+        if (!str_infos[i].p)
+            ch_send_err_and_exit(ctx,
+                                 "Failed to find string '%s' in the .rdata section in server.dll.",
+                                 str_infos[i].str);
+        if (str_infos[i].p == (void*)(-1))
+            ch_send_err_and_exit(ctx,
+                                 "Found multiple of string '%s' in the .rdata section in server.dll (expected 1).",
+                                 str_infos[i].str);
     }
-    ch_find_datamap_by_name(&mod_infos[CH_MOD_ENGINE], "GAME_HEADER");*/
 
-    ch_send_simple(ctx, CH_MSG_GOODBYE);
-    ch_clean_exit(ctx, CH_PAYLOAD_EXIT_OK);
+    ch_mod_sec server_text = sc.mods[CH_MOD_SERVER].sections[CH_SEC_TEXT];
+    const char* middle_of_dumpentityfactories_ctor = NULL;
+    const char* search_start = server_text.start;
+    size_t search_len = server_text.len;
+    const char* search_end = search_start + server_text.len;
+    while (search_start < search_end) {
+        const char* str_usage1 = ch_memmem(search_start, search_len, &str_infos[0].p, sizeof str_infos[0].p);
+        if (!str_usage1)
+            break;
+        const char* search_start2 = max((char*)server_text.start, str_usage1 - 32);
+        const char* search_end2 = min(search_end, str_usage1 + 32);
+        const char* str_usage2 =
+            ch_memmem(search_start2, (size_t)(search_end2 - search_start2), &str_infos[1].p, sizeof str_infos[1].p);
+
+        if (str_usage1 && str_usage2) {
+            if (middle_of_dumpentityfactories_ctor)
+                ch_send_err_and_exit(
+                    ctx,
+                    "Found multiple candidates for 'dumpentityfactories' ConCommand ctor (expected 1).");
+            middle_of_dumpentityfactories_ctor = str_usage1;
+        }
+
+        size_t diff = (size_t)(str_usage1 - search_start) + 1;
+        search_start += diff;
+        search_len -= diff;
+    }
+    if (!middle_of_dumpentityfactories_ctor)
+        ch_send_err_and_exit(ctx, "Found no candidates for 'dumpentityfactories' ConCommand ctor.");
+
+
+    ch_send_log_info(ctx, "FOUND SOMETHING at %08X!!!", middle_of_dumpentityfactories_ctor - (char*)sc.mods[CH_MOD_SERVER].base);
+
+    ch_send_wave(ctx, CH_MSG_GOODBYE);
+    ch_clean_exit(ctx, 0);
 }
 
 BOOL WINAPI DllMain(HINSTANCE handle, DWORD reason, LPVOID reserved)
