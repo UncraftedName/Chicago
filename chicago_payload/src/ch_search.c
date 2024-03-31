@@ -111,7 +111,7 @@ void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scrat
 }
 
 // DataDescInit pattern: 6A 00 E8 ?? ?? ?? ?? 83 C4 04 A3 ?? ?? ?? ?? C3 (needs 18 bytes of scratch space)
-bool ch_pattern_match(const unsigned char* mem, ch_pattern pattern)
+bool ch_pattern_match(ch_ptr mem, ch_pattern pattern)
 {
     for (size_t i = 0; i < pattern.len; i++)
         if (!(pattern.wildmask[i / 8] & (1 << (i & 7))) && pattern.bytes[i] != mem[i])
@@ -147,40 +147,12 @@ void ch_get_module_info(ch_send_ctx* ctx, ch_search_ctx* sc)
     }
 }
 
-const void* ch_memmem(const void* restrict haystack,
-                      size_t haystack_len,
-                      const void* restrict needle,
-                      size_t needle_len)
+const void* ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len)
 {
     if (!haystack || !needle || haystack_len == 0 || needle_len == 0)
         return NULL;
-    for (const char* h = haystack; haystack_len >= needle_len; ++h, --haystack_len)
+    for (ch_ptr h = haystack; haystack_len >= needle_len; ++h, --haystack_len)
         if (!memcmp(h, needle, needle_len))
             return h;
-    return NULL;
-}
-
-/*
-* 1) find the string corresponding to the name of the datamap
-* 2) find instructions that reference that string (TODO consider only searching instructions corresponding to static initializers?)
-* 3) determine the address of the datamap from that function
-* 4) verify that the datamap is valid
-*/
-// this is by no means the "best", "most correct", "easiest", or the fastest way to do this
-datamap_t* ch_find_datamap_by_name(const ch_mod_info* module_info, const char* name)
-{
-    size_t name_len = strlen(name);
-    const char* sec_data = module_info->sections[CH_SEC_RDATA].start;
-    size_t sec_size = module_info->sections[CH_SEC_RDATA].len;
-    // find the string
-    const void* str_match = ch_memmem(sec_data, sec_size, name, name_len + 1);
-    // find an instruction which uses the string
-    const void* match = ch_memmem(module_info->sections[CH_SEC_TEXT].start,
-                                  module_info->sections[CH_SEC_TEXT].len,
-                                  &str_match,
-                                  sizeof str_match);
-    (void)match;
-    int x = 1;
-    (void)x;
     return NULL;
 }

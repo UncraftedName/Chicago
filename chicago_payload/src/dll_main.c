@@ -86,16 +86,16 @@ void __stdcall main(HINSTANCE h_mod)
 
     struct {
         const char* str;
-        const void* p;
+        ch_ptr p;
     } str_infos[] = {
-        {.str = "dumpentityfactories"},
         {.str = "Lists all entity factory names."},
+        {.str = "dumpentityfactories"},
     };
 
     ch_mod_sec server_rdata = sc.mods[CH_MOD_SERVER].sections[CH_SEC_RDATA];
     for (int i = 0; i < 2; i++) {
         str_infos[i].p =
-            ch_memmem_unique(server_rdata.start, server_rdata.len, str_infos[i].str, strlen(str_infos[i].str) + 1);
+            ch_memmem_unique(server_rdata.start, server_rdata.len, (ch_ptr)str_infos[i].str, strlen(str_infos[i].str) + 1);
         if (!str_infos[i].p)
             ch_send_err_and_exit(ctx,
                                  "Failed to find string '%s' in the .rdata section in server.dll.",
@@ -107,20 +107,22 @@ void __stdcall main(HINSTANCE h_mod)
     }
 
     ch_mod_sec server_text = sc.mods[CH_MOD_SERVER].sections[CH_SEC_TEXT];
-    const char* middle_of_dumpentityfactories_ctor = NULL;
-    const char* search_start = server_text.start;
+    ch_ptr middle_of_dumpentityfactories_ctor = NULL;
+    ch_ptr search_start = server_text.start;
     size_t search_len = server_text.len;
-    const char* search_end = search_start + server_text.len;
+    ch_ptr search_end = search_start + server_text.len;
     while (search_start < search_end) {
-        const char* str_usage1 = ch_memmem(search_start, search_len, &str_infos[0].p, sizeof str_infos[0].p);
+        ch_ptr str_usage1 = ch_memmem(search_start, search_len, (ch_ptr)&str_infos[0].p, sizeof str_infos[0].p);
         if (!str_usage1)
             break;
-        const char* search_start2 = max((char*)server_text.start, str_usage1 - 32);
-        const char* search_end2 = min(search_end, str_usage1 + 32);
-        const char* str_usage2 =
-            ch_memmem(search_start2, (size_t)(search_end2 - search_start2), &str_infos[1].p, sizeof str_infos[1].p);
+        ch_ptr search_start2 = max(server_text.start, str_usage1 - 128);
+        ch_ptr search_end2 = min(search_end, str_usage1 + 128);
+        ch_ptr str_usage2 = ch_memmem_unique(search_start2,
+                                             CH_PTR_DIFF(search_end2, search_start2),
+                                             (ch_ptr)&str_infos[1].p,
+                                             sizeof str_infos[1].p);
 
-        if (str_usage1 && str_usage2) {
+        if (str_usage2 != NULL && str_usage2 != CH_MEM_DUP) {
             if (middle_of_dumpentityfactories_ctor)
                 ch_send_err_and_exit(
                     ctx,
@@ -128,15 +130,28 @@ void __stdcall main(HINSTANCE h_mod)
             middle_of_dumpentityfactories_ctor = str_usage1;
         }
 
-        size_t diff = (size_t)(str_usage1 - search_start) + 1;
+        size_t diff = CH_PTR_DIFF(str_usage1, search_start) + 1;
         search_start += diff;
         search_len -= diff;
     }
     if (!middle_of_dumpentityfactories_ctor)
         ch_send_err_and_exit(ctx, "Found no candidates for 'dumpentityfactories' ConCommand ctor.");
 
+    const char* ctor_pattern_str = "6A 00 6A 04 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? B9 ?? ?? ?? ??";
+    unsigned char ctor_pattern_scratch[34];
+    ch_pattern ctor_pattern;
+    ch_parse_pattern_str(ctor_pattern_str, &ctor_pattern, ctor_pattern_scratch);
 
-    ch_send_log_info(ctx, "FOUND SOMETHING at %08X!!!", middle_of_dumpentityfactories_ctor - (char*)sc.mods[CH_MOD_SERVER].base);
+    ch_ptr ctor = middle_of_dumpentityfactories_ctor - 5;
+
+    if (!ch_pattern_match(ctor, ctor_pattern))
+        ch_send_err_and_exit(
+            ctx,
+            "Found a single candidate for 'dumpentityfactories' ConCommand ctor, but it didn't match the pattern.");
+
+    ch_send_log_info(ctx,
+                     "Found 'dumpentityfactories' ConCommand ctor at server.dll+0x%08X",
+                     CH_PTR_DIFF(ctor, sc.mods[CH_MOD_SERVER].base));
 
     ch_send_wave(ctx, CH_MSG_GOODBYE);
     ch_clean_exit(ctx, 0);
