@@ -110,7 +110,6 @@ void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scrat
     assert(i == out->len);
 }
 
-// DataDescInit pattern: 6A 00 E8 ?? ?? ?? ?? 83 C4 04 A3 ?? ?? ?? ?? C3 (needs 18 bytes of scratch space)
 bool ch_pattern_match(ch_ptr mem, ch_pattern pattern)
 {
     for (size_t i = 0; i < pattern.len; i++)
@@ -230,17 +229,114 @@ void ch_find_entity_factory_cvar(ch_send_ctx* ctx, ch_search_ctx* sc)
     assert(cb_info.cvar_ctor_out && cb_info.cvar_impl_out);
 
     ch_send_log_info(ctx,
-                     "Found 'dumpentityfactories' ConCommand ctor at server.dll+0x%08X",
+                     "Found 'dumpentityfactories' ConCommand ctor at server.dll[0x%08X].",
                      CH_PTR_DIFF(cb_info.cvar_ctor_out, server_mod->base));
     sc->dump_entity_factories_ctor = cb_info.cvar_ctor_out;
     sc->dump_entity_factories_impl = cb_info.cvar_impl_out;
 }
 
-void ch_find_static_inits_from_single(ch_send_ctx* ctx, ch_mod_info* mod, ch_ptr static_init_func)
+typedef struct _find_static_inits_cb_info {
+    ch_mod_info* mod;
+    ch_ptr table_start_out;
+    size_t table_len_out;
+} _find_static_inits_cb_info;
+
+static bool _find_static_inits_cb(ch_ptr match, void* user_data)
 {
-    (void)ctx;
-    (void)mod;
-    (void)static_init_func;
+    _find_static_inits_cb_info* info = user_data;
+    ch_mod_sec mod_rdata = info->mod->sections[CH_SEC_RDATA];
+    ch_mod_sec mod_text = info->mod->sections[CH_SEC_TEXT];
+
+    /*
+    * We expect to land somewhere in the static init table. The table is in rdata,
+    * and it's just a table that points to a bunch of static init functions surrounded
+    * by null terminators. Scan before & after the match, check that each function
+    * pointer points to somewhere in the text section.
+    */
+    const int direction[] = {-1, 1};
+    int n_funcs = 0;
+    for (int i = 0; i < 2; i++) {
+        const ch_ptr* func_pptr = (ch_ptr*)match;
+        for (;; n_funcs++) {
+            func_pptr += direction[i];
+            if (!ch_ptr_in_sec((ch_ptr)func_pptr, mod_rdata))
+                return false;
+            if (!*func_pptr)
+                break;
+            if (!ch_ptr_in_sec(*func_pptr, mod_text))
+                return false;
+        }
+        if (i == 0)
+            info->table_start_out = (ch_ptr)(func_pptr + 1);
+        else
+            info->table_len_out = CH_PTR_DIFF((ch_ptr)(func_pptr - 1), info->table_start_out) / sizeof(ch_ptr);
+    }
+    return n_funcs > 5; // arbitrary threshold - should have at least this many static inits
+}
+
+void ch_find_datamap_init_candidates(struct ch_send_ctx* ctx,
+                                     ch_search_ctx* sc,
+                                     ch_game_module mod_idx,
+                                     ch_ptr static_init_func)
+{
+    ch_mod_info* mod = &sc->mods[mod_idx];
+    ch_mod_sec mod_rdata = mod->sections[CH_SEC_RDATA];
+    ch_mod_sec mod_text = mod->sections[CH_SEC_TEXT];
+    _find_static_inits_cb_info cb_info = {.mod = mod};
+    ch_ptr found_table = ch_memmem_cb(mod_rdata.start,
+                                      mod_rdata.len,
+                                      (ch_ptr)&static_init_func,
+                                      sizeof(ch_ptr),
+                                      _find_static_inits_cb,
+                                      &cb_info);
+
+    if (!found_table)
+        ch_send_err_and_exit(ctx, "Failed to find static init table in %s.", ch_mod_names[mod_idx]);
+    ch_send_log_info(ctx,
+                     "Found %lu static init functions at %s[0x%08X].",
+                     cb_info.table_len_out,
+                     ch_mod_names[mod_idx],
+                     CH_PTR_DIFF(cb_info.table_start_out, mod->base));
+    mod->datamap_init_candidates = malloc(sizeof(ch_ptr) * cb_info.table_len_out);
+    if (!mod->datamap_init_candidates)
+        ch_send_err_and_exit(ctx, "Out of memory (static init table).");
+    memcpy(mod->datamap_init_candidates, cb_info.table_start_out, sizeof(ch_ptr) * cb_info.table_len_out);
+
+    /*
+    * The static init table has functions of the type (void*)(void), but the DataDescInit functions
+    * call the DataMapInit functions with a null param. This is great, because it means the DataMapInit
+    * function is not inlined (at least from what I've seen) and has a very consistent and simple
+    * pattern. The pattern is just:
+    * 
+    * push 0
+    * call
+    * add esp, 4
+    * mov [mem], eax
+    * ret
+    * 
+    * So we filter through the static inits and find which ones match this pattern. These are of
+    * course not guaranteed to be DataMapInit functions, but they narrow down the search a lot.
+    */
+
+    const char* pattern_str = "6A 00 E8 ?? ?? ?? ?? 83 C4 04 A3 ?? ?? ?? ?? C3";
+    unsigned char pattern_scratch[18];
+    ch_pattern datadescinit_pattern;
+    ch_parse_pattern_str(pattern_str, &datadescinit_pattern, pattern_scratch);
+
+    mod->n_datamap_init_candidates = 0;
+    for (size_t i = 0; i < cb_info.table_len_out; i++) {
+        // we know the function is in .text, make sure the whole pattern is too
+        if (!ch_ptr_in_sec(mod->datamap_init_candidates[i] + datadescinit_pattern.len, mod_text))
+            continue;
+        if (ch_pattern_match(mod->datamap_init_candidates[i], datadescinit_pattern))
+            mod->datamap_init_candidates[mod->n_datamap_init_candidates++] =
+                *(ch_ptr*)(mod->datamap_init_candidates[i] + 3);
+    }
+
+    ch_send_log_info(ctx,
+                     "Found %lu candidates for DataMapInit functions in %s.",
+                     mod->n_datamap_init_candidates,
+                     ch_mod_names[mod_idx]);
 }
 
 ch_ptr ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len)

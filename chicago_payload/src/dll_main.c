@@ -49,6 +49,7 @@ void __stdcall main(HINSTANCE h_mod)
     ch_get_module_info(ctx, &sc);
 
     ch_find_entity_factory_cvar(ctx, &sc);
+    ch_find_datamap_init_candidates(ctx, &sc, CH_MOD_SERVER, sc.dump_entity_factories_ctor);
 
     ch_send_wave(ctx, CH_MSG_GOODBYE);
     ch_clean_exit(ctx, 0);

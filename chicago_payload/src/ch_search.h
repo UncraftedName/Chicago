@@ -38,9 +38,9 @@ typedef struct ch_mod_info {
     ch_mod_sec sections[CH_SEC_COUNT];
     // base address of module
     ch_ptr base;
-    // a filtered & sorted array of static initializers
-    ch_ptr* static_inits;
-    size_t n_static_inits;
+    // a sorted array of functions which could potentially be DataMapInit functions
+    ch_ptr* datamap_init_candidates;
+    size_t n_datamap_init_candidates;
 } ch_mod_info;
 
 // TODO - do we really need a mod info for all modules, it might be just server lolol
@@ -77,7 +77,10 @@ void ch_get_module_info(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
 void ch_find_entity_factory_cvar(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
-void ch_find_static_inits_from_single(struct ch_send_ctx* ctx, ch_mod_info* mod, ch_ptr static_init_func);
+void ch_find_datamap_init_candidates(struct ch_send_ctx* ctx,
+                                     ch_search_ctx* sc,
+                                     ch_game_module mod_idx,
+                                     ch_ptr static_init_func);
 
 ch_ptr ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len);
 

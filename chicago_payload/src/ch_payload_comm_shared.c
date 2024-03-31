@@ -19,7 +19,7 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT])
     if (Module32First(snap, &me32)) {
         do {
             for (int i = 0; i < CH_MOD_COUNT; i++) {
-                if (strcmp(ch_required_module_names[i], me32.szModule))
+                if (strcmp(ch_mod_names[i], me32.szModule))
                     continue;
                 mod_flags |= 1 << i;
                 if (base_addresses)

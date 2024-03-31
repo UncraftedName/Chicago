@@ -24,7 +24,7 @@ typedef enum ch_game_module {
     CH_MOD_COUNT,
 } ch_game_module;
 
-static const char* const ch_required_module_names[CH_MOD_COUNT] = {
+static const char* const ch_mod_names[CH_MOD_COUNT] = {
     "client.dll",
     "server.dll",
     "engine.dll",
