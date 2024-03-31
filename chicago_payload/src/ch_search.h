@@ -50,6 +50,11 @@ typedef struct ch_search_ctx {
     ch_ptr dump_entity_factories_impl;
 } ch_search_ctx;
 
+static inline bool ch_ptr_in_sec(ch_ptr ptr, ch_mod_sec sec)
+{
+    return ptr >= sec.start && ptr < sec.start + sec.len;
+}
+
 static const char* const ch_mod_sec_names[CH_SEC_COUNT] = {
     ".text",
     ".data",
@@ -72,7 +77,17 @@ void ch_get_module_info(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
 void ch_find_entity_factory_cvar(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
+void ch_find_static_inits_from_single(struct ch_send_ctx* ctx, ch_mod_info* mod, ch_ptr static_init_func);
+
 ch_ptr ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len);
+
+// calls the callback on each match which returns false if we should continue searching
+ch_ptr ch_memmem_cb(ch_ptr haystack,
+                    size_t haystack_len,
+                    ch_ptr needle,
+                    size_t needle_len,
+                    bool (*cb)(ch_ptr match, void* user_data),
+                    void* user_data);
 
 #define CH_MEM_DUP ((ch_ptr)(-1))
 

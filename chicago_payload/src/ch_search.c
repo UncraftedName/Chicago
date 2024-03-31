@@ -147,11 +147,43 @@ void ch_get_module_info(ch_send_ctx* ctx, ch_search_ctx* sc)
     }
 }
 
+typedef struct _find_ctor_cb_info {
+    ch_mod_sec server_mod_text;
+    ch_pattern ctor_pattern;
+    ch_ptr cvar_desc_str;
+    ch_ptr cvar_ctor_out;
+    ch_ptr cvar_impl_out;
+} _find_ctor_cb_info;
+
+static bool _find_ctor_cb(ch_ptr match, void* user_data)
+{
+    _find_ctor_cb_info* info = user_data;
+    info->cvar_ctor_out = match - 15;
+
+    if (info->cvar_ctor_out < info->server_mod_text.start)
+        return false;
+    if (!ch_ptr_in_sec(info->cvar_ctor_out + info->ctor_pattern.len, info->server_mod_text))
+        return false;
+    if (!ch_pattern_match(info->cvar_ctor_out, info->ctor_pattern))
+        return false;
+    if (*(ch_ptr*)(info->cvar_ctor_out + 5) != info->cvar_desc_str)
+        return false;
+    info->cvar_impl_out = *(ch_ptr*)(info->cvar_ctor_out + 10);
+    if (!ch_ptr_in_sec(info->cvar_impl_out, info->server_mod_text))
+        return false;
+    return true;
+}
+
 void ch_find_entity_factory_cvar(ch_send_ctx* ctx, ch_search_ctx* sc)
 {
     ch_mod_info* server_mod = &sc->mods[CH_MOD_SERVER];
     ch_mod_sec server_rdata = server_mod->sections[CH_SEC_RDATA];
     ch_mod_sec server_text = server_mod->sections[CH_SEC_TEXT];
+
+    enum {
+        CH_CVAR_STR_NAME,
+        CH_CVAR_STR_DESC,
+    };
 
     struct {
         const char* str;
@@ -168,71 +200,47 @@ void ch_find_entity_factory_cvar(ch_send_ctx* ctx, ch_search_ctx* sc)
                                           server_rdata.len,
                                           (ch_ptr)str_infos[i].str,
                                           strlen(str_infos[i].str) + 1);
-        if (!str_infos[i].p)
+
+        if (str_infos[i].p == NULL || str_infos[i].p == CH_MEM_DUP)
             ch_send_err_and_exit(ctx,
-                                 "Failed to find string '%s' in the .rdata section in server.dll.",
-                                 str_infos[i].str);
-        if (str_infos[i].p == (void*)(-1))
-            ch_send_err_and_exit(ctx,
-                                 "Found multiple of string '%s' in the .rdata section in server.dll (expected 1).",
-                                 str_infos[i].str);
+                                 "Error searching for string '%s' in the .rdata section in server.dll (%s).",
+                                 str_infos[i].str,
+                                 str_infos[i].p == NULL ? "no matches" : "multiple matches but expected 1");
     }
 
-    /*
-    * Find the ctor of the dumpentityfactories cvar. This is done by looking for the first location where the
-    * address to the above strings is referenced within some small number of instructions from each other and
-    * the pattern below is matched.
-    */
-
-    const size_t str_search_threshold = 128;
-
-    // we need the function start & the cvar callback from this ctor, with a pattern we can make sure we get both
+    _find_ctor_cb_info cb_info = {
+        .server_mod_text = server_text,
+        .cvar_desc_str = str_infos[CH_CVAR_STR_DESC].p,
+    };
+    //                                             v (cvar desc)  v (cvar impl)  v (cvar name)  v (thisptr)
     const char* ctor_pattern_str = "6A 00 6A 04 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? B9 ?? ?? ?? ??";
-    unsigned char ctor_pattern_scratch[34];
-    ch_pattern ctor_pattern;
-    ch_parse_pattern_str(ctor_pattern_str, &ctor_pattern, ctor_pattern_scratch);
+    unsigned char ctor_pattern_scratch[28];
+    ch_parse_pattern_str(ctor_pattern_str, &cb_info.ctor_pattern, ctor_pattern_scratch);
 
-    ch_ptr search_start = server_text.start;
-    size_t search_len = server_text.len;
-    ch_ptr search_end = search_start + server_text.len;
-    while (search_start < search_end) {
-        // find instructions which have the same bytes as the address of the first string
-        ch_ptr str1_ref = ch_memmem(search_start, search_len, (ch_ptr)&str_infos[0].p, sizeof str_infos[0].p);
-        if (!str1_ref)
-            break;
+    ch_ptr found_ctor = ch_memmem_cb(server_text.start,
+                                     server_text.len,
+                                     (ch_ptr)&str_infos[CH_CVAR_STR_NAME].p,
+                                     sizeof(ch_ptr),
+                                     _find_ctor_cb,
+                                     &cb_info);
 
-        // within some threshold around the first match, find instructions which have the same bytes as the address of the second string
-        ch_ptr search_start2 = max(server_text.start, str1_ref - str_search_threshold);
-        ch_ptr search_end2 = min(search_end, str1_ref + str_search_threshold);
-        ch_ptr str2_ref = ch_memmem(search_start2,
-                                    CH_PTR_DIFF(search_end2, search_start2),
-                                    (ch_ptr)&str_infos[1].p,
-                                    sizeof str_infos[1].p);
+    if (!found_ctor)
+        ch_send_err_and_exit(ctx, "Could not find 'dumpentityfactories' ConCommand ctor in server.dll.");
 
-        if (str2_ref) {
-            // this is likely the ctor, the pattern will tell us for sure and tell us if our offset of 15 is correct
-            sc->dump_entity_factories_ctor = str1_ref - 15;
-            if (ch_pattern_match(sc->dump_entity_factories_ctor, ctor_pattern)) {
-                sc->dump_entity_factories_impl = *(ch_ptr*)(sc->dump_entity_factories_ctor + 11);
-                break;
-            }
-            ch_send_log_info(ctx,
-                             "Found a potential candidate for 'dumpentityfactories' ConCommand ctor at "
-                             "server.dll+0x%08X, but it didn't match the pattern.",
-                             CH_PTR_DIFF(str1_ref, server_mod->base));
-            sc->dump_entity_factories_ctor = NULL;
-        }
-
-        size_t diff = CH_PTR_DIFF(str1_ref, search_start) + 1;
-        search_start += diff;
-        search_len -= diff;
-    }
-    if (!sc->dump_entity_factories_ctor)
-        ch_send_err_and_exit(ctx, "Found no candidates for 'dumpentityfactories' ConCommand ctor.");
+    assert(cb_info.cvar_ctor_out && cb_info.cvar_impl_out);
 
     ch_send_log_info(ctx,
                      "Found 'dumpentityfactories' ConCommand ctor at server.dll+0x%08X",
-                     CH_PTR_DIFF(sc->dump_entity_factories_ctor, server_mod->base));
+                     CH_PTR_DIFF(cb_info.cvar_ctor_out, server_mod->base));
+    sc->dump_entity_factories_ctor = cb_info.cvar_ctor_out;
+    sc->dump_entity_factories_impl = cb_info.cvar_impl_out;
+}
+
+void ch_find_static_inits_from_single(ch_send_ctx* ctx, ch_mod_info* mod, ch_ptr static_init_func)
+{
+    (void)ctx;
+    (void)mod;
+    (void)static_init_func;
 }
 
 ch_ptr ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len)
@@ -242,5 +250,25 @@ ch_ptr ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t nee
     for (ch_ptr h = haystack; haystack_len >= needle_len; ++h, --haystack_len)
         if (!memcmp(h, needle, needle_len))
             return h;
+    return NULL;
+}
+
+ch_ptr ch_memmem_cb(ch_ptr haystack,
+                    size_t haystack_len,
+                    ch_ptr needle,
+                    size_t needle_len,
+                    bool (*cb)(ch_ptr match, void* user_data),
+                    void* user_data)
+{
+    while (needle_len <= haystack_len) {
+        ch_ptr p = ch_memmem(haystack, haystack_len, needle, needle_len);
+        if (!p)
+            return NULL;
+        if (cb(p, user_data))
+            return p;
+        size_t diff = CH_PTR_DIFF(p, haystack) + 1;
+        haystack += diff;
+        haystack_len -= diff;
+    }
     return NULL;
 }
