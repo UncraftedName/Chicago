@@ -147,7 +147,95 @@ void ch_get_module_info(ch_send_ctx* ctx, ch_search_ctx* sc)
     }
 }
 
-const void* ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len)
+void ch_find_entity_factory_cvar(ch_send_ctx* ctx, ch_search_ctx* sc)
+{
+    ch_mod_info* server_mod = &sc->mods[CH_MOD_SERVER];
+    ch_mod_sec server_rdata = server_mod->sections[CH_SEC_RDATA];
+    ch_mod_sec server_text = server_mod->sections[CH_SEC_TEXT];
+
+    struct {
+        const char* str;
+        ch_ptr p;
+    } str_infos[] = {
+        {.str = "dumpentityfactories"},
+        {.str = "Lists all entity factory names."},
+    };
+
+    // first, find the above strings
+
+    for (int i = 0; i < 2; i++) {
+        str_infos[i].p = ch_memmem_unique(server_rdata.start,
+                                          server_rdata.len,
+                                          (ch_ptr)str_infos[i].str,
+                                          strlen(str_infos[i].str) + 1);
+        if (!str_infos[i].p)
+            ch_send_err_and_exit(ctx,
+                                 "Failed to find string '%s' in the .rdata section in server.dll.",
+                                 str_infos[i].str);
+        if (str_infos[i].p == (void*)(-1))
+            ch_send_err_and_exit(ctx,
+                                 "Found multiple of string '%s' in the .rdata section in server.dll (expected 1).",
+                                 str_infos[i].str);
+    }
+
+    /*
+    * Find the ctor of the dumpentityfactories cvar. This is done by looking for the first location where the
+    * address to the above strings is referenced within some small number of instructions from each other and
+    * the pattern below is matched.
+    */
+
+    const size_t str_search_threshold = 128;
+
+    // we need the function start & the cvar callback from this ctor, with a pattern we can make sure we get both
+    const char* ctor_pattern_str = "6A 00 6A 04 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? B9 ?? ?? ?? ??";
+    unsigned char ctor_pattern_scratch[34];
+    ch_pattern ctor_pattern;
+    ch_parse_pattern_str(ctor_pattern_str, &ctor_pattern, ctor_pattern_scratch);
+
+    ch_ptr search_start = server_text.start;
+    size_t search_len = server_text.len;
+    ch_ptr search_end = search_start + server_text.len;
+    while (search_start < search_end) {
+        // find instructions which have the same bytes as the address of the first string
+        ch_ptr str1_ref = ch_memmem(search_start, search_len, (ch_ptr)&str_infos[0].p, sizeof str_infos[0].p);
+        if (!str1_ref)
+            break;
+
+        // within some threshold around the first match, find instructions which have the same bytes as the address of the second string
+        ch_ptr search_start2 = max(server_text.start, str1_ref - str_search_threshold);
+        ch_ptr search_end2 = min(search_end, str1_ref + str_search_threshold);
+        ch_ptr str2_ref = ch_memmem(search_start2,
+                                    CH_PTR_DIFF(search_end2, search_start2),
+                                    (ch_ptr)&str_infos[1].p,
+                                    sizeof str_infos[1].p);
+
+        if (str2_ref) {
+            // this is likely the ctor, the pattern will tell us for sure and tell us if our offset of 15 is correct
+            sc->dump_entity_factories_ctor = str1_ref - 15;
+            if (ch_pattern_match(sc->dump_entity_factories_ctor, ctor_pattern)) {
+                sc->dump_entity_factories_impl = *(ch_ptr*)(sc->dump_entity_factories_ctor + 11);
+                break;
+            }
+            ch_send_log_info(ctx,
+                             "Found a potential candidate for 'dumpentityfactories' ConCommand ctor at "
+                             "server.dll+0x%08X, but it didn't match the pattern.",
+                             CH_PTR_DIFF(str1_ref, server_mod->base));
+            sc->dump_entity_factories_ctor = NULL;
+        }
+
+        size_t diff = CH_PTR_DIFF(str1_ref, search_start) + 1;
+        search_start += diff;
+        search_len -= diff;
+    }
+    if (!sc->dump_entity_factories_ctor)
+        ch_send_err_and_exit(ctx, "Found no candidates for 'dumpentityfactories' ConCommand ctor.");
+
+    ch_send_log_info(ctx,
+                     "Found 'dumpentityfactories' ConCommand ctor at server.dll+0x%08X",
+                     CH_PTR_DIFF(sc->dump_entity_factories_ctor, server_mod->base));
+}
+
+ch_ptr ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len)
 {
     if (!haystack || !needle || haystack_len == 0 || needle_len == 0)
         return NULL;

@@ -46,6 +46,8 @@ typedef struct ch_mod_info {
 // TODO - do we really need a mod info for all modules, it might be just server lolol
 typedef struct ch_search_ctx {
     ch_mod_info mods[CH_MOD_COUNT];
+    ch_ptr dump_entity_factories_ctor;
+    ch_ptr dump_entity_factories_impl;
 } ch_search_ctx;
 
 static const char* const ch_mod_sec_names[CH_SEC_COUNT] = {
@@ -67,6 +69,8 @@ bool ch_pattern_match(ch_ptr mem, ch_pattern pattern);
 
 // fill the search content, on fail send an error
 void ch_get_module_info(struct ch_send_ctx* ctx, ch_search_ctx* sc);
+
+void ch_find_entity_factory_cvar(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
 ch_ptr ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len);
 
