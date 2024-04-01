@@ -1,6 +1,10 @@
 project(chicago_payload)
 set(CMAKE_C_STANDARD 23)
 
+if (MSVC)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /EHa")
+endif()
+
 include_directories(
 	src
 	../chicago_parse_lib/src

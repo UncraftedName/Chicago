@@ -46,6 +46,12 @@ void ch_send_log_info(ch_send_ctx* ctx, const char* fmt, ...)
     va_end(vargs);
 }
 
+void ch_send_datamap(const datamap_t* dm, void* vctx)
+{
+    ch_send_ctx* ctx = vctx;
+    ch_send_log_info(ctx, "Found datamap '%s', %d fields", dm->dataClassName, dm->dataNumFields);
+}
+
 void ch_send_err_and_exit(ch_send_ctx* ctx, const char* fmt, ...)
 {
     va_list vargs;

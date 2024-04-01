@@ -29,5 +29,7 @@ typedef struct ch_send_ctx {
 
 void ch_send_wave(ch_send_ctx* ctx, ch_comm_msg_type type);
 void ch_send_log_info(ch_send_ctx* ctx, const char* fmt, ...);
+// slightly different params than other functions to match with datamap callback
+void ch_send_datamap(const datamap_t* dm, void* ctx);
 __declspec(noreturn) void ch_send_err_and_exit(ch_send_ctx* ctx, const char* fmt, ...);
 __declspec(noreturn) void ch_clean_exit(ch_send_ctx* ctx, DWORD exit_code);
