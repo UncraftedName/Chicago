@@ -52,6 +52,14 @@ void __stdcall main(HINSTANCE h_mod)
     ch_find_static_inits_from_single(ctx, &sc, CH_MOD_SERVER, sc.dump_entity_factories_ctor);
     ch_iterate_datamaps(ctx, &sc, CH_MOD_SERVER, ch_send_datamap, ctx);
 
+    // sc.mods[CH_MOD_VPHYSICS].static_inits = sc.mods[CH_MOD_VPHYSICS].base + 0xb2184;
+    // sc.mods[CH_MOD_VPHYSICS].n_static_inits = 53;
+    // ch_iterate_datamaps(ctx, &sc, CH_MOD_VPHYSICS, ch_send_datamap, ctx);
+
+    // sc.mods[CH_MOD_ENGINE].static_inits = sc.mods[CH_MOD_ENGINE].base + 0x2a4668;
+    // sc.mods[CH_MOD_ENGINE].n_static_inits = 1788;
+    // ch_iterate_datamaps(ctx, &sc, CH_MOD_ENGINE, ch_send_datamap, ctx);
+
     ch_send_wave(ctx, CH_MSG_GOODBYE);
     ch_clean_exit(ctx, 0);
 }

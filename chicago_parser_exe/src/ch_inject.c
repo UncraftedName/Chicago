@@ -17,45 +17,24 @@
 #define MAX_SELECT_GAMES 9
 
 typedef struct ch_recv_ctx {
-    ch_log_level log_level;
     msgpack_zone mp_zone;
+    ch_log_level log_level;
     HANDLE pipe;
     HANDLE game;
     HANDLE wait_event;
     LPVOID remote_thread_alloc;
 } ch_recv_ctx;
 
-void ch_vlog(const ch_recv_ctx* ctx, ch_log_level level, const char* fmt, va_list vargs)
-{
-    if (level < ctx->log_level)
-        return;
-    vfprintf(stderr, fmt, vargs);
-}
-
-void ch_log_info(const ch_recv_ctx* ctx, const char* fmt, ...)
-{
-    va_list va;
-    va_start(va, fmt);
-    ch_vlog(ctx, CH_LL_INFO, fmt, va);
-    va_end(va);
-}
-
-void ch_log_error(const ch_recv_ctx* ctx, const char* fmt, ...)
-{
-    va_list va;
-    va_start(va, fmt);
-    ch_vlog(ctx, CH_LL_ERROR, fmt, va);
-    va_end(va);
-}
-
 // print the fmt followed by the winapi_error
 void ch_log_sys_err(const ch_recv_ctx* ctx, DWORD winapi_error, const char* fmt, ...)
 {
+    if (ctx->log_level > CH_LL_ERROR)
+        return;
     va_list va;
     va_start(va, fmt);
-    ch_vlog(ctx, CH_LL_ERROR, fmt, va);
+    vfprintf(stderr, fmt, va);
     va_end(va);
-    ch_log_error(ctx, " (GLE=%lu)", winapi_error);
+    CH_LOG_ERROR(ctx, " (GLE=%lu)", winapi_error);
     char err_msg[1024];
     DWORD err_msg_len = FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
                                        NULL,
@@ -66,9 +45,9 @@ void ch_log_sys_err(const ch_recv_ctx* ctx, DWORD winapi_error, const char* fmt,
                                        NULL);
 
     if (err_msg_len == 0)
-        ch_log_error(ctx, " FormatMessageA failed: (GLE=%lu)", GetLastError());
+        CH_LOG_ERROR(ctx, " FormatMessageA failed: (GLE=%lu)", GetLastError());
     else
-        ch_log_error(ctx, " %s", err_msg);
+        CH_LOG_ERROR(ctx, " %s", err_msg);
 }
 
 // setup ctx->pipe
@@ -86,7 +65,7 @@ BOOL ch_create_pipe(ch_recv_ctx* ctx)
     if (ctx->pipe == INVALID_HANDLE_VALUE) {
         DWORD err = GetLastError();
         if (err == ERROR_PIPE_BUSY) {
-            ch_log_error(ctx,
+            CH_LOG_ERROR(ctx,
                          "CreateNamedPipe failed, make sure you're not running another instance of this application.");
         } else {
             ch_log_sys_err(ctx, err, "CreateNamedPipe failed:");
@@ -116,7 +95,7 @@ BOOL ch_find_game(ch_recv_ctx* ctx)
             if (ch_get_required_modules(pe32w.th32ProcessID, NULL)) {
                 proc_ids[num_found_games] = pe32w.th32ProcessID;
                 if (++num_found_games >= MAX_SELECT_GAMES) {
-                    ch_log_error(ctx,
+                    CH_LOG_ERROR(ctx,
                                  "Found more than %d candidate source engine games, close some and try again.",
                                  MAX_SELECT_GAMES);
                     CloseHandle(snap);
@@ -128,7 +107,7 @@ BOOL ch_find_game(ch_recv_ctx* ctx)
     CloseHandle(snap);
 
     if (num_found_games == 0) {
-        ch_log_error(ctx, "No candidate source engine games found, launch a source game and try again.");
+        CH_LOG_ERROR(ctx, "No candidate source engine games found, launch a source game and try again.");
         return FALSE;
     }
 
@@ -181,7 +160,7 @@ BOOL ch_find_game(ch_recv_ctx* ctx)
     // in either case, keep the handle to the game process open, we'll need it to inject the payload
     if (num_found_games == 1) {
         // exactly one candidate game was found, choose it
-        ch_log_info(ctx, "Choosing source game: %s\n", msg);
+        CH_LOG_INFO(ctx, "Choosing source game: %s\n", msg);
         ctx->game = proc_handles[0];
     } else {
         // we found multiple candidate games, print them and let the user decide which one to use
@@ -220,7 +199,7 @@ BOOL ch_inject(ch_recv_ctx* ctx)
     if (path_cch_res == S_OK)
         path_cch_res = PathCchCombine(payload_path, MAX_PATH, payload_path, L"chicago_payload.dll");
     if (path_cch_res != S_OK) {
-        ch_log_error(ctx, "A PathCch function failed.");
+        CH_LOG_ERROR(ctx, "A PathCch function failed.");
         return FALSE;
     }
 
@@ -296,7 +275,7 @@ BOOL ch_await_connect(ch_recv_ctx* ctx)
             ch_log_sys_err(ctx, GetLastError(), "WaitForSingleObject failed:");
             return FALSE;
         case WAIT_TIMEOUT:
-            ch_log_error(ctx, "Timed out waiting for payload (WaitForSingleObject).");
+            CH_LOG_ERROR(ctx, "Timed out waiting for payload (WaitForSingleObject).");
             return FALSE;
         default:
             break;
@@ -311,25 +290,9 @@ BOOL ch_await_connect(ch_recv_ctx* ctx)
     return TRUE;
 }
 
-// return true if we're expecting more messages
-bool ch_process_msg(ch_recv_ctx* ctx, const char* buf, size_t buf_size)
-{
-    msgpack_object o;
-    msgpack_unpack(buf, buf_size, NULL, &ctx->mp_zone, &o);
-    msgpack_object_print(stdout, o);
-    printf("\n");
-    return true;
-}
-
 // client has connected, process requests
 BOOL ch_recv_loop(ch_recv_ctx* ctx)
 {
-    char* recv_buf = malloc(CH_PIPE_INIT_BUF_SIZE);
-    if (!recv_buf) {
-        ch_log_error(ctx, "Out of memory (ch_recv_loop malloc).");
-        return FALSE;
-    }
-    size_t buf_size = CH_PIPE_INIT_BUF_SIZE;
 
     size_t msg_len = 0;
     BOOL have_read_result = FALSE;
@@ -343,6 +306,16 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
         CH_RS_ERROR,
         CH_RS_DONE,
     } state = CH_RS_RUNNING;
+
+    size_t buf_size = CH_PIPE_INIT_BUF_SIZE;
+    char* recv_buf = malloc(CH_PIPE_INIT_BUF_SIZE);
+    ch_process_msg_ctx process_ctx;
+    bool process_init = ch_process_msg_ctx_init(&process_ctx, ctx->log_level, CH_PIPE_INIT_BUF_SIZE);
+
+    if (!recv_buf || !process_init) {
+        CH_LOG_ERROR(ctx, "Out of memory (ch_recv_loop malloc).");
+        state = CH_RS_ERROR;
+    }
 
     /*
     * This loop is a bit wacky and I'm honestly still lost in the sauce about what exactly
@@ -367,12 +340,12 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
         if (read_success) {
             n_loops_without_success = 0;
             msg_len += read_n_bytes;
-            if (!ch_process_msg(ctx, recv_buf, msg_len))
+            if (!ch_unpack_and_process_msg(&process_ctx, recv_buf, msg_len))
                 state = CH_RS_DONE;
             msg_len = 0;
             continue;
         } else if (n_loops_without_success++ > 5) {
-            ch_log_error(ctx, "recv loop has failed too many times, something fishy is going on");
+            CH_LOG_ERROR(ctx, "recv loop has failed too many times, something fishy is going on");
             state = CH_RS_ERROR;
             break;
         }
@@ -402,12 +375,12 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
                     recv_buf = new_buf;
                     buf_size *= 2;
                 } else {
-                    ch_log_error(ctx, "Out of memory (ch_recv_loop realloc).");
+                    CH_LOG_ERROR(ctx, "Out of memory (ch_recv_loop realloc).");
                     state = CH_RS_ERROR;
                 }
                 break;
             case ERROR_BROKEN_PIPE:
-                ch_log_error(ctx, "Payload disconnected before sending goodbye message.");
+                CH_LOG_ERROR(ctx, "Payload disconnected before sending goodbye message.");
                 state = CH_RS_ERROR;
                 break;
             default:
@@ -438,8 +411,8 @@ void ch_do_inject_and_recv_maps(ch_log_level log_level)
     };
     ch_recv_ctx* ctx = &rctx;
 
-    if (!msgpack_zone_init(&ctx->mp_zone, CH_PIPE_INIT_BUF_SIZE / sizeof(void*))) {
-        ch_log_error(ctx, "Out of memory (ch_recv_ctx init).");
+    if (!msgpack_zone_init(&ctx->mp_zone, CH_PIPE_INIT_BUF_SIZE)) {
+        CH_LOG_ERROR(ctx, "Out of memory (ch_recv_ctx init).");
         return;
     }
 
