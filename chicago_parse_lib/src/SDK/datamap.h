@@ -185,9 +185,11 @@ typedef struct ch_type_description {
     float float_tol;
 } ch_type_description;
 
-// a stripped down version of the game's datamap_t
+// a slightly modified version of the game's datamap_t
 typedef struct ch_datamap {
     const ch_type_description* data_desc;
+    const char* module_name;
+    uintptr_t module_off;
     int n_fields;
     char const* class_name;
     const struct ch_datamap* base_map;

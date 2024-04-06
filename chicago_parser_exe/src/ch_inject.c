@@ -23,6 +23,7 @@ typedef struct ch_recv_ctx {
     HANDLE game;
     HANDLE wait_event;
     LPVOID remote_thread_alloc;
+    struct ch_process_msg_ctx* process_ctx;
 } ch_recv_ctx;
 
 // print the fmt followed by the winapi_error
@@ -293,8 +294,6 @@ BOOL ch_await_connect(ch_recv_ctx* ctx)
 // client has connected, process requests
 BOOL ch_recv_loop(ch_recv_ctx* ctx)
 {
-
-    size_t msg_len = 0;
     BOOL have_read_result = FALSE;
     BOOL read_success = FALSE;
     DWORD read_n_bytes = 0;
@@ -307,12 +306,9 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
         CH_RS_DONE,
     } state = CH_RS_RUNNING;
 
-    size_t buf_size = CH_PIPE_INIT_BUF_SIZE;
-    char* recv_buf = malloc(CH_PIPE_INIT_BUF_SIZE);
-    ch_process_msg_ctx process_ctx;
-    bool process_init = ch_process_msg_ctx_init(&process_ctx, ctx->log_level, CH_PIPE_INIT_BUF_SIZE);
+    struct ch_process_msg_ctx* process_ctx = ch_msg_ctx_alloc(ctx->log_level, CH_PIPE_INIT_BUF_SIZE);
 
-    if (!recv_buf || !process_init) {
+    if (!process_ctx) {
         CH_LOG_ERROR(ctx, "Out of memory (ch_recv_loop malloc).");
         state = CH_RS_ERROR;
     }
@@ -334,15 +330,18 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
     while (state == CH_RS_RUNNING) {
 
         if (!have_read_result)
-            read_success = ReadFile(ctx->pipe, recv_buf + msg_len, buf_size - msg_len, &read_n_bytes, &overlapped);
+            read_success = ReadFile(ctx->pipe,
+                                    ch_msg_ctx_buf(process_ctx),
+                                    ch_msg_ctx_buf_capacity(process_ctx),
+                                    &read_n_bytes,
+                                    &overlapped);
         have_read_result = FALSE;
 
         if (read_success) {
             n_loops_without_success = 0;
-            msg_len += read_n_bytes;
-            if (!ch_unpack_and_process_msg(&process_ctx, recv_buf, msg_len))
+            ch_msg_ctx_buf_consumed(process_ctx, read_n_bytes);
+            if (!ch_msg_ctx_process(process_ctx))
                 state = CH_RS_DONE;
-            msg_len = 0;
             continue;
         } else if (n_loops_without_success++ > 5) {
             CH_LOG_ERROR(ctx, "recv loop has failed too many times, something fishy is going on");
@@ -369,12 +368,8 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
                 * read_n_bytes is 0 for some reason even though we did read bytes, so
                 * increment the msg_len by however much we specified in the read call.
                 */
-                msg_len += buf_size - msg_len;
-                char* new_buf = realloc(recv_buf, buf_size * 2);
-                if (new_buf) {
-                    recv_buf = new_buf;
-                    buf_size *= 2;
-                } else {
+                ch_msg_ctx_buf_consumed(process_ctx, ch_msg_ctx_buf_capacity(process_ctx));
+                if (!ch_msg_ctx_buf_expand(process_ctx)) {
                     CH_LOG_ERROR(ctx, "Out of memory (ch_recv_loop realloc).");
                     state = CH_RS_ERROR;
                 }
@@ -389,8 +384,9 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
                 break;
         }
     }
-    free(recv_buf);
+    ch_msg_ctx_free(process_ctx);
     assert(state == CH_RS_ERROR || state == CH_RS_DONE);
+    // TODO this return is meaningless, the writing datamaps to a file stuff should happen here maybe
     return state == CH_RS_DONE;
 }
 

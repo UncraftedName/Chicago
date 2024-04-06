@@ -1,4 +1,81 @@
 #include "ch_recv.h"
+#include "SDK/datamap.h"
+
+typedef struct ch_mp_unpacked_ll {
+    msgpack_unpacked unp;
+    struct ch_mp_unpacked_ll* next;
+    char _pad[4];
+} ch_mp_unpacked_ll;
+
+typedef struct ch_process_msg_ctx {
+    bool got_hello;
+    char _pad[3];
+    ch_log_level log_level;
+    msgpack_unpacker mp_unpacker;
+    ch_mp_unpacked_ll* unpacked_ll;
+    size_t buf_expand_size;
+    size_t msg_len;
+
+    // TODO check perf, then try with arena :p
+    // ch_arena arena;
+} ch_process_msg_ctx;
+
+ch_process_msg_ctx* ch_msg_ctx_alloc(ch_log_level log_level, size_t init_chunk_size)
+{
+    ch_process_msg_ctx* ctx = calloc(1, sizeof(ch_process_msg_ctx));
+    if (!ctx)
+        return NULL;
+    ctx->log_level = log_level;
+    ctx->unpacked_ll = calloc(1, sizeof(ch_mp_unpacked_ll));
+    if (!ctx->unpacked_ll) {
+        ch_msg_ctx_free(ctx);
+        return NULL;
+    }
+    if (!msgpack_unpacker_init(&ctx->mp_unpacker, init_chunk_size)) {
+        ch_msg_ctx_free(ctx);
+        return NULL;
+    }
+    ctx->buf_expand_size = init_chunk_size;
+    return ctx;
+}
+
+void ch_msg_ctx_free(ch_process_msg_ctx* ctx)
+{
+    if (!ctx)
+        return;
+    while (ctx->unpacked_ll) {
+        ch_mp_unpacked_ll* cur = ctx->unpacked_ll;
+        ctx->unpacked_ll = ctx->unpacked_ll->next;
+        msgpack_unpacked_destroy(&cur->unp);
+        free(cur);
+    }
+    msgpack_unpacker_destroy(&ctx->mp_unpacker);
+    free(ctx);
+}
+
+char* ch_msg_ctx_buf(ch_process_msg_ctx* ctx)
+{
+    return msgpack_unpacker_buffer(&ctx->mp_unpacker);
+}
+
+size_t ch_msg_ctx_buf_capacity(ch_process_msg_ctx* ctx)
+{
+    return msgpack_unpacker_buffer_capacity(&ctx->mp_unpacker);
+}
+
+bool ch_msg_ctx_buf_expand(ch_process_msg_ctx* ctx)
+{
+    if (!msgpack_unpacker_reserve_buffer(&ctx->mp_unpacker, ctx->buf_expand_size))
+        return false;
+    ctx->buf_expand_size *= 2;
+    return true;
+}
+
+void ch_msg_ctx_buf_consumed(ch_process_msg_ctx* ctx, size_t n)
+{
+    msgpack_unpacker_buffer_consumed(&ctx->mp_unpacker, n);
+    ctx->msg_len += n;
+}
 
 typedef enum ch_unpack_result {
     // all is well
@@ -20,19 +97,129 @@ typedef enum ch_unpack_result {
         }                                  \
     } while (0)
 
-#define CH_CHECK_STR(mp_str, comp_str) CH_CHECK(!strncmp((mp_str).ptr, comp_str, (mp_str).size))
+#define CH_CHECK_STR(mp_str_obj, comp_str)                                                   \
+    do {                                                                                     \
+        CH_CHECK((mp_str_obj).type == MSGPACK_OBJECT_STR);                                   \
+        CH_CHECK(!strncmp((mp_str_obj).via.str.ptr, comp_str, ((mp_str_obj).via.str).size)); \
+    } while (0)
 
-ch_unpack_result ch_process_msg(ch_process_msg_ctx* ctx, msgpack_object o)
+#define CH_CHECK_SCHEMA(expr)                 \
+    do {                                      \
+        ch_unpack_result schema_check = expr; \
+        if (schema_check != CH_UNPACK_OK)     \
+            return schema_check;              \
+    } while (0)
+
+typedef struct ch_kv_pair {
+    const char* key_name;
+    const uint8_t allowed_types[2];
+    uint8_t n_allowed;
+    uint8_t _pad;
+} ch_kv_pair;
+
+typedef struct ch_kv_schema {
+    size_t n_kv_pairs;
+    const ch_kv_pair* kv_pairs;
+} ch_kv_schema;
+
+#define CH_KV_SINGLE(name, msgpack_type)                                  \
+    {                                                                     \
+        .key_name = name, .allowed_types = {msgpack_type}, .n_allowed = 1 \
+    }
+
+#define CH_KV_EITHER(name, msgpack_type1, msgpack_type2)                                  \
+    {                                                                                     \
+        .key_name = name, .allowed_types = {msgpack_type1, msgpack_type2}, .n_allowed = 2 \
+    }
+
+#define CH_KV_WILD(name)                 \
+    {                                    \
+        .key_name = name, .n_allowed = 0 \
+    }
+
+#define CH_DEFINE_KV_SCHEMA(schema_name, ...)                      \
+    static const ch_kv_pair schema_name##_pairs[] = {__VA_ARGS__}; \
+    static const ch_kv_schema schema_name = {                      \
+        .n_kv_pairs = ARRAYSIZE(schema_name##_pairs),              \
+        .kv_pairs = schema_name##_pairs,                           \
+    };
+
+ch_unpack_result ch_check_kv_schema(msgpack_object o, ch_kv_schema schema)
 {
     CH_CHECK(o.type == MSGPACK_OBJECT_MAP);
-    CH_CHECK(o.via.map.size == 2);
-    CH_CHECK(o.via.map.ptr[0].key.type == MSGPACK_OBJECT_STR);
-    CH_CHECK_STR(o.via.map.ptr[0].key.via.str, CHMPK_MSG_TYPE);
-    CH_CHECK(o.via.map.ptr[0].val.type == MSGPACK_OBJECT_POSITIVE_INTEGER);
-    CH_CHECK(o.via.map.ptr[1].key.type == MSGPACK_OBJECT_STR);
-    CH_CHECK_STR(o.via.map.ptr[1].key.via.str, CHMPK_MSG_DATA);
+    CH_CHECK(o.via.map.size == schema.n_kv_pairs);
+    const msgpack_object_kv* kv = o.via.map.ptr;
+    for (size_t i = 0; i < schema.n_kv_pairs; i++) {
+        CH_CHECK_STR(kv[i].key, schema.kv_pairs[i].key_name);
+        for (size_t j = 0; j < schema.kv_pairs[i].n_allowed; j++)
+            CH_CHECK(kv[i].val.type == schema.kv_pairs[i].allowed_types[j]);
+    }
+    return CH_UNPACK_OK;
+}
+
+/*
+* case 1: root map is already present -> don't keep, verify full
+* case 2: inherited are present -> keep, verify base map
+* case 3: embedded maps are present -> keep, verify embedded
+* case 3: no datamaps are present -> keep, no verify0
+*/
+
+enum ch_dm_process_type {
+    // level 0
+    CH_DM_COMPARE_WITH_SAVED,
+    CH_DM_VERIFY_SCHEMA,
+};
+
+static ch_unpack_result ch_check_dm_schema(ch_process_msg_ctx* ctx, msgpack_object o, bool unpack)
+{
+    CH_DEFINE_KV_SCHEMA(dm_kv_schema,
+                        CH_KV_SINGLE(CHMPK_MSG_DM_NAME, MSGPACK_OBJECT_STR),
+                        CH_KV_SINGLE(CHMPK_MSG_DM_MODULE, MSGPACK_OBJECT_STR),
+                        CH_KV_SINGLE(CHMPK_MSG_DM_MODULE_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                        CH_KV_EITHER(CHMPK_MSG_DM_BASE, MSGPACK_OBJECT_MAP, MSGPACK_OBJECT_NIL),
+                        CH_KV_SINGLE(CHMPK_MSG_DM_FIELDS, MSGPACK_OBJECT_ARRAY));
+    CH_CHECK_SCHEMA(ch_check_kv_schema(o, dm_kv_schema));
+
+    const msgpack_object_kv* kv_dm = o.via.map.ptr;
+    if (kv_dm[3].val.type == MSGPACK_OBJECT_MAP)
+        CH_CHECK_SCHEMA(ch_check_dm_schema(ctx, kv_dm[3].val, unpack));
+
+    for (size_t i = 0; i < kv_dm[4].val.via.array.size; i++) {
+        msgpack_object td = kv_dm[4].val.via.array.ptr[i];
+        CH_DEFINE_KV_SCHEMA(dm_td_schema,
+                            CH_KV_SINGLE(CHMPK_MSG_TD_NAME, MSGPACK_OBJECT_STR),
+                            CH_KV_SINGLE(CHMPK_MSG_TD_TYPE, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CHMPK_MSG_TD_FLAGS, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CHMPK_MSG_TD_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CHMPK_MSG_TD_TOTAL_SIZE, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CHMPK_MSG_TD_RESTORE_OPS, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CHMPK_MSG_TD_INPUT_FUNC, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_EITHER(CHMPK_MSG_TD_EMBEDDED, MSGPACK_OBJECT_MAP, MSGPACK_OBJECT_NIL),
+                            CH_KV_SINGLE(CHMPK_MSG_TD_OVERRIDE_COUNT, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CHMPK_MSG_TD_TOL, MSGPACK_OBJECT_FLOAT));
+        CH_CHECK_SCHEMA(ch_check_kv_schema(td, dm_td_schema));
+
+        const msgpack_object_kv* td_kv = td.via.map.ptr;
+        if (td_kv[7].val.type == MSGPACK_OBJECT_MAP)
+            CH_CHECK_SCHEMA(ch_check_dm_schema(ctx, td_kv[7].val, unpack));
+    }
+    return CH_UNPACK_OK;
+}
+
+// static ch_unpack_result()
+
+static ch_unpack_result ch_process_msg(ch_process_msg_ctx* ctx, msgpack_object o)
+{
+    CH_DEFINE_KV_SCHEMA(msg_kv_schema,
+                        CH_KV_SINGLE(CHMPK_MSG_TYPE, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                        CH_KV_WILD(CHMPK_MSG_DATA));
+
+    ch_unpack_result schema_check = ch_check_kv_schema(o, msg_kv_schema);
+    if (schema_check != CH_UNPACK_OK)
+        return schema_check;
 
     const msgpack_object_kv* kv = o.via.map.ptr;
+
     ch_comm_msg_type msg_type = kv[0].val.via.u64;
     if (msg_type != CH_MSG_HELLO && !ctx->got_hello) {
         CH_LOG_ERROR(ctx, "Payload sent other messages before sending HELLO.");
@@ -61,23 +248,21 @@ ch_unpack_result ch_process_msg(ch_process_msg_ctx* ctx, msgpack_object o)
     }
 }
 
-bool ch_unpack_and_process_msg(ch_process_msg_ctx* ctx, const char* buf, size_t buf_size)
+bool ch_msg_ctx_process(ch_process_msg_ctx* ctx)
 {
-    size_t off = 0;
-    msgpack_object o;
-    msgpack_unpack_return ret = msgpack_unpack(buf, buf_size, &off, &ctx->mp_zone, &o);
+    msgpack_unpack_return ret = msgpack_unpacker_next(&ctx->mp_unpacker, &ctx->unpacked_ll->unp);
     if (ret != MSGPACK_UNPACK_SUCCESS) {
         CH_LOG_ERROR(ctx, "msgpack_unpack failed with return %d.", ret);
         return false;
     }
 
 #if 0
-    CH_LOG_INFO(ctx, "recv msg (%zu bytes)\n", buf_size);
-    msgpack_object_print(stdout, o);
+    CH_LOG_INFO(ctx, "[exe] recv msg (%zu bytes)\n[exe] ", ctx->msg_len);
+    msgpack_object_print(stdout, ctx->unpacked_ll->unp.data);
     fprintf(stdout, "\n");
 #endif
 
-    switch (ch_process_msg(ctx, o)) {
+    switch (ch_process_msg(ctx, ctx->unpacked_ll->unp.data)) {
         case CH_UNPACK_OK:
             break;
         case CH_UNPACK_EXIT:
@@ -94,36 +279,9 @@ bool ch_unpack_and_process_msg(ch_process_msg_ctx* ctx, const char* buf, size_t 
             return false;
     }
 
-    /*
-    * Sit down, and get in the zone. No, not the vibe zone silly! The msgpack zone!!!
-    * When msgpack unpacks an object, it needs to allocate memory for storing the msgpack_objects
-    * that represent the unpacked structure. These bjects are stored in a msgpack_zone, and there
-    * are 3 ways to unpack streams provided by msgpack:
-    * 
-    * 1) msgpack_unpack_next: assumes that the original buffer will remain alive while processing
-    * 2) msgpack_unpacker_next: copies the original buffer into the zone
-    * 3) msgpack_unpack: same as 1, but allows you to reuse a zone
-    * 
-    * I was told by people who know more about programming than I do that allocations are slow.
-    * In my case, the buffer will remain alive while I unpack (I'm probably not going to be
-    * multithreading this app), so options 1 & 3 look good. Option 1 reallocates a zone every
-    * time I unpack, so I think I want option 3. For some reason, the docs say that option 3 is
-    * obsolete, and also msgpack doesn't give a way to check if a zone was expanded during
-    * unpacking. But whatever, I'm using option 3 and a small hack to check if the zone grew.
-    */
-
-    struct mp_chunk {
-        struct mp_chunk* next;
-    };
-
-    if (((struct mp_chunk*)ctx->mp_zone.chunk_list.head)->next) {
-        // free the old zone, allocate a new one twice the zone (no realloc boohoo)
-        size_t old_chunk_size = ctx->mp_zone.chunk_size;
-        msgpack_zone_destroy(&ctx->mp_zone);
-        msgpack_zone_init(&ctx->mp_zone, old_chunk_size * 2);
-    } else {
-        msgpack_zone_clear(&ctx->mp_zone);
-    }
+    // TODO: only free the unpacked data if necessary
+    msgpack_unpacked_destroy(&ctx->unpacked_ll->unp);
+    ctx->msg_len = 0;
 
     return true;
 }
