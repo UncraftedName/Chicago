@@ -60,7 +60,7 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 * The only big one is datamaps. It's got the following data format (when sent over IPC):
 * {
 *   CHMPK_MSG_DM_NAME:       str,
-*   CHMPK_MSG_DM_MODULE:     str,
+*   CHMPK_MSG_DM_MODULE:     int, (ch_game_module)
 *   CHMPK_MSG_DM_MODULE_OFF: int, (offset into .dll)
 *   CHMPK_MSG_DM_BASE:       datamap|nil,
 *   CHMPK_MSG_DM_FIELDS:     list of type descriptions, len >= 0
@@ -72,8 +72,8 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 *   CHMPK_MSG_TD_FLAGS:          int,
 *   CHMPK_MSG_TD_OFF:            int,
 *   CHMPK_MSG_TD_TOTAL_SIZE:     int,
-*   CHMPK_MSG_TD_RESTORE_OPS:    int, (offset into .dll, 0 if DNE)
-*   CHMPK_MSG_TD_INPUT_FUNC:     int, (offset into .dll, 0 if DNE)
+*   CHMPK_MSG_TD_RESTORE_OPS:    int|nil, (offset into .dll)
+*   CHMPK_MSG_TD_INPUT_FUNC:     int|nil, (offset into .dll)
 *   CHMPK_MSG_TD_EMBEDDED:       datamap|nil,
 *   CHMPK_MSG_TD_OVERRIDE_COUNT: int,
 *   CHMPK_MSG_TD_TOL:            float,
@@ -88,7 +88,7 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 #define CHMPK_MSG_DATA "msg_data"
 
 #define CHMPK_MSG_DM_NAME "name"
-#define CHMPK_MSG_DM_MODULE "module_name"
+#define CHMPK_MSG_DM_MODULE "module_idx"
 #define CHMPK_MSG_DM_MODULE_OFF "module_offset"
 #define CHMPK_MSG_DM_BASE "base_map"
 #define CHMPK_MSG_DM_FIELDS "fields"
