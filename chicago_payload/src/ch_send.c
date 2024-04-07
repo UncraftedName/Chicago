@@ -77,7 +77,7 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_info* info, const datamap_t* dm
     CH_CHK_PACK_CSTR(pk, CHMPK_MSG_DM_NAME);
     CH_CHK_PACK_CSTR(pk, dm->dataClassName);
     CH_CHK_PACK_CSTR(pk, CHMPK_MSG_DM_MODULE);
-    CH_CHK_PACK(int(pk, info->mod_idx));
+    CH_CHK_PACK_CSTR(pk, ch_mod_names[info->mod_idx]);
     CH_CHK_PACK_CSTR(pk, CHMPK_MSG_DM_MODULE_OFF);
     CH_CHK(ch_pack_module_offset(info, (ch_ptr)dm));
     CH_CHK_PACK_CSTR(pk, CHMPK_MSG_DM_BASE);

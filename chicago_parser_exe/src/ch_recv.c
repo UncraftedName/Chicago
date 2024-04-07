@@ -216,7 +216,7 @@ static ch_unpack_result ch_check_dm_schema_cb(const msgpack_object* o, void* use
     (void)user_data;
     CH_DEFINE_KV_SCHEMA(dm_kv_schema,
                         CH_KV_SINGLE(CHMPK_MSG_DM_NAME, MSGPACK_OBJECT_STR),
-                        CH_KV_SINGLE(CHMPK_MSG_DM_MODULE, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                        CH_KV_SINGLE(CHMPK_MSG_DM_MODULE, MSGPACK_OBJECT_STR),
                         CH_KV_SINGLE(CHMPK_MSG_DM_MODULE_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
                         CH_KV_EITHER(CHMPK_MSG_DM_BASE, MSGPACK_OBJECT_MAP, MSGPACK_OBJECT_NIL),
                         CH_KV_SINGLE(CHMPK_MSG_DM_FIELDS, MSGPACK_OBJECT_ARRAY));
@@ -263,8 +263,7 @@ static ch_unpack_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void* 
     }
     // I was originally going to do a deep comparison of all of the fields, but I can just compare the datamap pointers :)
     msgpack_object_map dm2 = existing->o.via.map;
-    bool dm_equal = dm.ptr[1].val.via.u64 == dm2.ptr[1].val.via.u64 && dm.ptr[2].val.via.u64 == dm2.ptr[2].val.via.u64;
-    if (dm_equal)
+    if (msgpack_object_equal(dm.ptr[1].val, dm2.ptr[1].val) && msgpack_object_equal(dm.ptr[2].val, dm2.ptr[2].val))
         return CH_UNPACK_OK;
 
     msgpack_object_str name = dm.ptr[0].val.via.str;
@@ -303,14 +302,6 @@ static void ch_change_datamap_references_to_strings(msgpack_object_map dm)
     // base map
     if (dm.ptr[3].val.type == MSGPACK_OBJECT_MAP)
         dm.ptr[3].val = dm.ptr[3].val.via.map.ptr[0].val;
-
-    // module reference
-    msgpack_object* mod_ref = &dm.ptr[1].val;
-    ch_game_module mod_idx = mod_ref->via.u64;
-    mod_ref->type = MSGPACK_OBJECT_STR;
-    mod_ref->via.str.ptr = ch_mod_names[mod_idx];
-    mod_ref->via.str.size = strlen(ch_mod_names[mod_idx]);
-
     //embedded maps
     msgpack_object_array fields = dm.ptr[4].val.via.array;
     for (size_t i = 0; i < fields.size; i++) {
