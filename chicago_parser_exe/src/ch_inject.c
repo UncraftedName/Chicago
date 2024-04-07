@@ -23,7 +23,7 @@ typedef struct ch_recv_ctx {
     HANDLE game;
     HANDLE wait_event;
     LPVOID remote_thread_alloc;
-    struct ch_process_msg_ctx* process_ctx;
+    const char* file_output_path;
 } ch_recv_ctx;
 
 // print the fmt followed by the winapi_error
@@ -306,7 +306,8 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
         CH_RS_DONE,
     } state = CH_RS_RUNNING;
 
-    struct ch_process_msg_ctx* process_ctx = ch_msg_ctx_alloc(ctx->log_level, CH_PIPE_INIT_BUF_SIZE);
+    struct ch_process_msg_ctx* process_ctx =
+        ch_msg_ctx_alloc(ctx->log_level, CH_PIPE_INIT_BUF_SIZE, ctx->file_output_path);
 
     if (!process_ctx) {
         CH_LOG_ERROR(ctx, "Out of memory (ch_recv_loop malloc).");
@@ -343,7 +344,7 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
             if (!ch_msg_ctx_process(process_ctx))
                 state = CH_RS_DONE;
             continue;
-        } else if (n_loops_without_success++ > 5) {
+        } else if (n_loops_without_success++ > 10) {
             CH_LOG_ERROR(ctx, "recv loop has failed too many times, something fishy is going on");
             state = CH_RS_ERROR;
             break;
@@ -396,7 +397,7 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
             ok = x;     \
     }
 
-void ch_do_inject_and_recv_maps(ch_log_level log_level)
+void ch_do_inject_and_recv_maps(const char* file_output_path, ch_log_level log_level)
 {
     ch_recv_ctx rctx = {
         .log_level = log_level,
@@ -404,6 +405,7 @@ void ch_do_inject_and_recv_maps(ch_log_level log_level)
         .game = INVALID_HANDLE_VALUE,
         .wait_event = NULL,
         .remote_thread_alloc = NULL,
+        .file_output_path = file_output_path,
     };
     ch_recv_ctx* ctx = &rctx;
 

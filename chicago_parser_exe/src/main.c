@@ -15,7 +15,7 @@ int main(void)
         printf("Test result: %.4s\n", save_data.tag.id);
     ch_free_parsed_save_data(&save_data);*/
 
-    ch_do_inject_and_recv_maps(CH_LL_INFO);
+    ch_do_inject_and_recv_maps("datamaps2.msgpack", CH_LL_INFO);
 
     /*msgpack_sbuffer mp_buf;
     msgpack_packer mp_pk;

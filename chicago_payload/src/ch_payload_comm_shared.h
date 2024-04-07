@@ -14,7 +14,8 @@
 #define CH_PIPE_TIMEOUT_MS 1000
 #endif
 
-#define CH_PIPE_INIT_BUF_SIZE (1024 * 4)
+// some datamaps are close to 100MB went sent over IPC in p1-5135
+#define CH_PIPE_INIT_BUF_SIZE (1024 * 128)
 
 typedef enum ch_game_module {
     CH_MOD_CLIENT,
@@ -79,7 +80,8 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 *   CHMPK_MSG_TD_TOL:            float,
 * }
 * 
-* Each datamap is sent in full (all of the embedded & base maps are sent as well)
+* Each datamap is sent in full (all of the embedded & base maps are sent as well).
+* The exe then verifies that datamaps are distinct, then saves the base/embedded
 * in order to verify that all datamaps are distinct. When the datamaps are saved
 * to disk, CHMPK_MSG_DM_BASE & CHMPK_MSG_TD_EMBEDDED fields are instead strings
 * which uniquely reference a datamap that came before.
@@ -88,7 +90,7 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 #define CHMPK_MSG_DATA "msg_data"
 
 #define CHMPK_MSG_DM_NAME "name"
-#define CHMPK_MSG_DM_MODULE "module_idx"
+#define CHMPK_MSG_DM_MODULE "module"
 #define CHMPK_MSG_DM_MODULE_OFF "module_offset"
 #define CHMPK_MSG_DM_BASE "base_map"
 #define CHMPK_MSG_DM_FIELDS "fields"
