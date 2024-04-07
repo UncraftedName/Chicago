@@ -94,6 +94,13 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 #define CHMPK_MSG_DM_MODULE_OFF "module_offset"
 #define CHMPK_MSG_DM_BASE "base_map"
 #define CHMPK_MSG_DM_FIELDS "fields"
+
+#define CH_KV_IDX_DM_NAME 0
+#define CH_KV_IDX_DM_MODULE 1
+#define CH_KV_IDX_DM_MODULE_OFF 2
+#define CH_KV_IDX_DM_BASE 3
+#define CH_KV_IDX_DM_FIELDS 4
+
 // TODO chains_validated, packed_offsets_computed, packed_size
 
 #define CHMPK_MSG_TD_NAME "name"
@@ -106,4 +113,7 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 #define CHMPK_MSG_TD_EMBEDDED "embedded_map"
 #define CHMPK_MSG_TD_OVERRIDE_COUNT "override_count"
 #define CHMPK_MSG_TD_TOL "float_tolerance"
+
+#define CH_KV_IDX_TD_EMBEDDED 7
+
 // TODO override_field

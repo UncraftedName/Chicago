@@ -204,10 +204,10 @@ static ch_unpack_result ch_recurse_visit_datamaps(const msgpack_object o,
     if (o.type == MSGPACK_OBJECT_NIL)
         return CH_UNPACK_OK;
     CH_CHECK(cb(&o, user_data));
-    CH_CHECK(ch_recurse_visit_datamaps(o.via.map.ptr[3].val, cb, user_data));
-    msgpack_object_array fields = o.via.map.ptr[4].val.via.array;
+    CH_CHECK(ch_recurse_visit_datamaps(o.via.map.ptr[CH_KV_IDX_DM_BASE].val, cb, user_data));
+    msgpack_object_array fields = o.via.map.ptr[CH_KV_IDX_DM_FIELDS].val.via.array;
     for (size_t i = 0; i < fields.size; i++)
-        CH_CHECK(ch_recurse_visit_datamaps(fields.ptr[i].via.map.ptr[7].val, cb, user_data));
+        CH_CHECK(ch_recurse_visit_datamaps(fields.ptr[i].via.map.ptr[CH_KV_IDX_TD_EMBEDDED].val, cb, user_data));
     return CH_UNPACK_OK;
 }
 
@@ -222,7 +222,7 @@ static ch_unpack_result ch_check_dm_schema_cb(const msgpack_object* o, void* use
                         CH_KV_SINGLE(CHMPK_MSG_DM_FIELDS, MSGPACK_OBJECT_ARRAY));
     CH_CHECK(ch_check_kv_schema(*o, dm_kv_schema));
 
-    msgpack_object_array fields = o->via.map.ptr[4].val.via.array;
+    msgpack_object_array fields = o->via.map.ptr[CH_KV_IDX_DM_FIELDS].val.via.array;
 
     for (size_t i = 0; i < fields.size; i++) {
         CH_DEFINE_KV_SCHEMA(dm_td_schema,
@@ -250,7 +250,7 @@ static ch_unpack_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void* 
 {
     ch_verify_and_hash_dm_cb_udata* udata = (ch_verify_and_hash_dm_cb_udata*)user_data;
     msgpack_object_map dm = o->via.map;
-    ch_hashmap_entry entry = {.name = dm.ptr[0].val.via.str, .o = *o};
+    ch_hashmap_entry entry = {.name = dm.ptr[CH_KV_IDX_DM_NAME].val.via.str, .o = *o};
     uint64_t hash = ch_hashmap_entry_hash(&entry, 0, 0);
     const ch_hashmap_entry* existing = hashmap_get_with_hash(udata->ctx->dm_hashmap, &entry, hash);
 
@@ -263,11 +263,12 @@ static ch_unpack_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void* 
     }
     // I was originally going to do a deep comparison of all of the fields, but I can just compare the datamap pointers :)
     msgpack_object_map dm2 = existing->o.via.map;
-    if (msgpack_object_equal(dm.ptr[1].val, dm2.ptr[1].val) && msgpack_object_equal(dm.ptr[2].val, dm2.ptr[2].val))
+    if (msgpack_object_equal(dm.ptr[CH_KV_IDX_DM_MODULE].val, dm2.ptr[CH_KV_IDX_DM_MODULE].val) &&
+        msgpack_object_equal(dm.ptr[CH_KV_IDX_DM_MODULE_OFF].val, dm2.ptr[CH_KV_IDX_DM_MODULE_OFF].val))
         return CH_UNPACK_OK;
 
-    msgpack_object_str name = dm.ptr[0].val.via.str;
-    ch_game_module mod_idx = dm.ptr[1].val.via.u64;
+    msgpack_object_str name = dm.ptr[CH_KV_IDX_DM_NAME].val.via.str;
+    ch_game_module mod_idx = dm.ptr[CH_KV_IDX_DM_MODULE].val.via.u64;
     CH_LOG_ERROR(udata->ctx,
                  "Two datamaps found with the same name '%.*s' (%s), but different type descriptions!",
                  name.size,
@@ -294,20 +295,20 @@ static int ch_cmp_by_n_dependencies(const ch_map_sort_key* a, const ch_map_sort_
         return -1;
     if (a->n_dependencies > b->n_dependencies)
         return 1;
-    return ch_cmp_mp_str(a->dm.ptr[0].val.via.str, b->dm.ptr[0].val.via.str);
+    return ch_cmp_mp_str(a->dm.ptr[CH_KV_IDX_DM_NAME].val.via.str, b->dm.ptr[CH_KV_IDX_DM_NAME].val.via.str);
 }
 
 static void ch_change_datamap_references_to_strings(msgpack_object_map dm)
 {
     // base map
-    if (dm.ptr[3].val.type == MSGPACK_OBJECT_MAP)
-        dm.ptr[3].val = dm.ptr[3].val.via.map.ptr[0].val;
+    if (dm.ptr[CH_KV_IDX_DM_BASE].val.type == MSGPACK_OBJECT_MAP)
+        dm.ptr[CH_KV_IDX_DM_BASE].val = dm.ptr[CH_KV_IDX_DM_BASE].val.via.map.ptr[CH_KV_IDX_DM_NAME].val;
     //embedded maps
-    msgpack_object_array fields = dm.ptr[4].val.via.array;
+    msgpack_object_array fields = dm.ptr[CH_KV_IDX_DM_FIELDS].val.via.array;
     for (size_t i = 0; i < fields.size; i++) {
         msgpack_object_map td = fields.ptr[i].via.map;
-        if (td.ptr[7].val.type == MSGPACK_OBJECT_MAP)
-            td.ptr[7].val = td.ptr[7].val.via.map.ptr[0].val;
+        if (td.ptr[CH_KV_IDX_TD_EMBEDDED].val.type == MSGPACK_OBJECT_MAP)
+            td.ptr[CH_KV_IDX_TD_EMBEDDED].val = td.ptr[CH_KV_IDX_TD_EMBEDDED].val.via.map.ptr[CH_KV_IDX_DM_NAME].val;
     }
 }
 
@@ -391,8 +392,8 @@ static ch_unpack_result ch_process_msg(ch_process_msg_ctx* ctx, msgpack_object o
             CH_CHECK(ch_recurse_visit_datamaps(msg_data, ch_verify_and_hash_dm_cb, &udata));
             CH_LOG_INFO(ctx,
                         "Received datamap %.*s.\n",
-                        msg_data.via.map.ptr[0].val.via.str.size,
-                        msg_data.via.map.ptr[0].val.via.str.ptr);
+                        msg_data.via.map.ptr[CH_KV_IDX_DM_NAME].val.via.str.size,
+                        msg_data.via.map.ptr[CH_KV_IDX_DM_NAME].val.via.str.ptr);
             return CH_UNPACK_OK;
             break;
         case CH_MSG_LINKED_NAME:
