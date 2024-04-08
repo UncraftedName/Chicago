@@ -387,7 +387,6 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
     }
     ch_msg_ctx_free(process_ctx);
     assert(state == CH_RS_ERROR || state == CH_RS_DONE);
-    // TODO this return is meaningless, the writing datamaps to a file stuff should happen here maybe
     return state == CH_RS_DONE;
 }
 

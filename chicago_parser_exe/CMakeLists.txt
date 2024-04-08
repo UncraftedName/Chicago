@@ -11,7 +11,7 @@ include_directories(
 file(GLOB SRC_FILES
 	"${PROJECT_SOURCE_DIR}/src/*.c"
 	"${PROJECT_SOURCE_DIR}/../chicago_payload/src/ch_payload_comm_shared.c"
-	"${PROJECT_SOURCE_DIR}/../shared/thirdparty/*.c"
+	"${PROJECT_SOURCE_DIR}/../shared/thirdparty/hashmap/hashmap.c"
 )
 add_executable(chicago_parser ${SRC_FILES})
 add_dependencies(chicago_parser chicago_parse_lib msgpack)

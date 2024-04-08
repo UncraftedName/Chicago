@@ -3,7 +3,7 @@
 
 #include "ch_recv.h"
 #include "SDK/datamap.h"
-#include "thirdparty/hashmap.h"
+#include "thirdparty/hashmap/hashmap.h"
 
 #include "msgpack/fbuffer.h"
 
@@ -17,16 +17,29 @@ typedef struct ch_process_msg_ctx {
     bool got_hello;
     char _pad[3];
     ch_log_level log_level;
+
+    /*
+    * We use a single unpacker and unpack each message into a single unpacked structure.
+    * If the datamap is one that we've already receieved (e.g. we were sent a CHL2_Player
+    * map and then a CBaseEntity map later), then we reuse the unpacked object. Otherwise,
+    * we keep the object alive in this linked list.
+    */
     msgpack_unpacker mp_unpacker;
     ch_mp_unpacked_ll* unpacked_ll;
+    // how much we'll expand the msgpack buffer on next fail
     size_t buf_expand_size;
+    // total length of current message over IPC, only used for debugging
     size_t msg_len;
-    // dm name -> msgpack_object
-    struct hashmap* dm_hashmap;
-    const char* output_file_path;
 
-    // TODO check perf, then try with arena :p
-    // ch_arena arena;
+    /*
+    * We'll store datamap names to the corresponding datamap object for all datamaps. When
+    * we get a new datamap we'll store the map itself as well as any new base/embedded sorted_maps.
+    * If we get a datamap that we already have, then we'll verify that it's equal to the
+    * one we got before.
+    */
+    struct hashmap* dm_hashmap;
+
+    const char* output_file_path;
 } ch_process_msg_ctx;
 
 typedef struct ch_hashmap_entry {
@@ -42,7 +55,7 @@ static uint64_t ch_hashmap_entry_hash(const void* key, uint64_t seed0, uint64_t 
 
 static inline int ch_cmp_mp_str(msgpack_object_str s1, msgpack_object_str s2)
 {
-    // I'd like strnicmp, but in theory that can break mega-hard if two maps have the same lowercase name
+    // I'd like strnicmp, but in theory that can break mega-hard if two sorted_maps have the same lowercase name
     int res = strncmp(s1.ptr, s2.ptr, min(s1.size, s2.size));
     if (res)
         return res;
@@ -122,7 +135,7 @@ void ch_msg_ctx_buf_consumed(ch_process_msg_ctx* ctx, size_t n)
     ctx->msg_len += n;
 }
 
-typedef enum ch_unpack_result {
+typedef enum ch_process_result {
     // all is well
     CH_UNPACK_OK,
     // got goodbye, we can stop now
@@ -132,7 +145,7 @@ typedef enum ch_unpack_result {
     // caller reports error
     CH_UNPACK_OUT_OF_MEMORY,
     CH_UNPACK_WRONG_FORMAT,
-} ch_unpack_result;
+} ch_process_result;
 
 #define CH_CHECK_FORMAT(cond)              \
     do {                                   \
@@ -147,6 +160,8 @@ typedef enum ch_unpack_result {
         CH_CHECK_FORMAT((mp_str_obj).type == MSGPACK_OBJECT_STR);                                   \
         CH_CHECK_FORMAT(!strncmp((mp_str_obj).via.str.ptr, comp_str, ((mp_str_obj).via.str).size)); \
     } while (0)
+
+// schema stuff that's used for verifying the receieved format
 
 typedef struct ch_kv_pair {
     const char* key_name;
@@ -173,14 +188,14 @@ typedef struct ch_kv_schema {
         .kv_pairs = schema_name##_pairs,                           \
     };
 
-#define CH_CHECK(expr)               \
-    do {                             \
-        ch_unpack_result res = expr; \
-        if (res != CH_UNPACK_OK)     \
-            return res;              \
+#define CH_CHECK(expr)                \
+    do {                              \
+        ch_process_result res = expr; \
+        if (res != CH_UNPACK_OK)      \
+            return res;               \
     } while (0)
 
-ch_unpack_result ch_check_kv_schema(msgpack_object o, ch_kv_schema schema)
+ch_process_result ch_check_kv_schema(msgpack_object o, ch_kv_schema schema)
 {
     CH_CHECK_FORMAT(o.type == MSGPACK_OBJECT_MAP);
     CH_CHECK_FORMAT(o.via.map.size == schema.n_kv_pairs);
@@ -197,9 +212,10 @@ ch_unpack_result ch_check_kv_schema(msgpack_object o, ch_kv_schema schema)
     return CH_UNPACK_OK;
 }
 
-static ch_unpack_result ch_recurse_visit_datamaps(const msgpack_object o,
-                                                  ch_unpack_result (*cb)(const msgpack_object* o, void* user_data),
-                                                  void* user_data)
+// visit this datamap and base/embedded sorted_maps
+static ch_process_result ch_recurse_visit_datamaps(const msgpack_object o,
+                                                   ch_process_result (*cb)(const msgpack_object* o, void* user_data),
+                                                   void* user_data)
 {
     if (o.type == MSGPACK_OBJECT_NIL)
         return CH_UNPACK_OK;
@@ -211,7 +227,7 @@ static ch_unpack_result ch_recurse_visit_datamaps(const msgpack_object o,
     return CH_UNPACK_OK;
 }
 
-static ch_unpack_result ch_check_dm_schema_cb(const msgpack_object* o, void* user_data)
+static ch_process_result ch_check_dm_schema_cb(const msgpack_object* o, void* user_data)
 {
     (void)user_data;
     CH_DEFINE_KV_SCHEMA(dm_kv_schema,
@@ -246,7 +262,8 @@ typedef struct ch_verify_and_hash_dm_cb_udata {
     bool* save_unpacked;
 } ch_verify_and_hash_dm_cb_udata;
 
-static ch_unpack_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void* user_data)
+// add the datamap into the hashmap if it's new, compare with an existing one if it's not
+static ch_process_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void* user_data)
 {
     ch_verify_and_hash_dm_cb_udata* udata = (ch_verify_and_hash_dm_cb_udata*)user_data;
     msgpack_object_map dm = o->via.map;
@@ -277,7 +294,7 @@ static ch_unpack_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void* 
     return CH_UNPACK_CONSTRAINT_FAIL;
 }
 
-static ch_unpack_result ch_count_maps_cb(const msgpack_object* o, void* user_data)
+static ch_process_result ch_count_maps_cb(const msgpack_object* o, void* user_data)
 {
     (void)o;
     ++*(uint32_t*)user_data;
@@ -289,8 +306,11 @@ typedef struct ch_map_sort_key {
     uint32_t n_dependencies;
 } ch_map_sort_key;
 
-static int ch_cmp_by_n_dependencies(const ch_map_sort_key* a, const ch_map_sort_key* b)
+static int ch_cmp_datamaps(const ch_map_sort_key* a, const ch_map_sort_key* b)
 {
+    int cmp = ch_cmp_mp_str(a->dm.ptr[CH_KV_IDX_DM_MODULE].val.via.str, b->dm.ptr[CH_KV_IDX_DM_MODULE].val.via.str);
+    if (cmp)
+        return cmp;
     if (a->n_dependencies < b->n_dependencies)
         return -1;
     if (a->n_dependencies > b->n_dependencies)
@@ -298,12 +318,13 @@ static int ch_cmp_by_n_dependencies(const ch_map_sort_key* a, const ch_map_sort_
     return ch_cmp_mp_str(a->dm.ptr[CH_KV_IDX_DM_NAME].val.via.str, b->dm.ptr[CH_KV_IDX_DM_NAME].val.via.str);
 }
 
+// change the msgpack objects which reference base/embedded sorted_maps to just strings
 static void ch_change_datamap_references_to_strings(msgpack_object_map dm)
 {
     // base map
     if (dm.ptr[CH_KV_IDX_DM_BASE].val.type == MSGPACK_OBJECT_MAP)
         dm.ptr[CH_KV_IDX_DM_BASE].val = dm.ptr[CH_KV_IDX_DM_BASE].val.via.map.ptr[CH_KV_IDX_DM_NAME].val;
-    //embedded maps
+    //embedded sorted_maps
     msgpack_object_array fields = dm.ptr[CH_KV_IDX_DM_FIELDS].val.via.array;
     for (size_t i = 0; i < fields.size; i++) {
         msgpack_object_map td = fields.ptr[i].via.map;
@@ -312,48 +333,62 @@ static void ch_change_datamap_references_to_strings(msgpack_object_map dm)
     }
 }
 
-static void ch_write_all_to_file(ch_process_msg_ctx* ctx)
+static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
 {
     // TODO add checks here to see if we receieved any data
     size_t n_datamaps = hashmap_count(ctx->dm_hashmap);
-    ch_map_sort_key* maps = malloc(n_datamaps * sizeof(ch_map_sort_key));
-    if (!maps) {
-        CH_LOG_ERROR(ctx, "Out of memory (write_to_file).");
-        return;
+    if (n_datamaps == 0) {
+        CH_LOG_ERROR(ctx, "Writing to file without any sent datamaps, stopping.");
+        return CH_UNPACK_CONSTRAINT_FAIL;
     }
+
+    ch_map_sort_key* sorted_maps = malloc(n_datamaps * sizeof(ch_map_sort_key));
+    if (!sorted_maps)
+        return CH_UNPACK_OUT_OF_MEMORY;
 
     size_t map_idx = 0;
     size_t it = 0;
     ch_hashmap_entry* entry = NULL;
     while (hashmap_iter(ctx->dm_hashmap, &it, &entry)) {
-        maps[map_idx].dm = entry->o.via.map;
-        maps[map_idx].n_dependencies = 0;
-        ch_recurse_visit_datamaps(entry->o, ch_count_maps_cb, &maps[map_idx].n_dependencies);
+        sorted_maps[map_idx].dm = entry->o.via.map;
+        sorted_maps[map_idx].n_dependencies = 0;
+        ch_recurse_visit_datamaps(entry->o, ch_count_maps_cb, &sorted_maps[map_idx].n_dependencies);
         map_idx++;
     }
 
-    qsort(maps, n_datamaps, sizeof *maps, ch_cmp_by_n_dependencies);
+    /*
+    * Sort by the number of base/embedded sorted_maps each map has and then by name. This guarantees that all the
+    * dependencies of each map are before it in the list. The only exception would be if there was some circular
+    * dependencies but that would very much go against how datamaps function.
+    */
+    qsort(sorted_maps, n_datamaps, sizeof *sorted_maps, ch_cmp_datamaps);
 
     FILE* f = fopen(ctx->output_file_path, "wb");
     if (!f) {
         CH_LOG_ERROR(ctx, "Failed to write to file '%s', (errno=%d)", ctx->output_file_path, errno);
-        return;
+        return CH_UNPACK_CONSTRAINT_FAIL;
     }
     CH_LOG_INFO(ctx, "Writing %zu datamaps to '%s'.\n", n_datamaps, ctx->output_file_path);
     msgpack_packer packer = {.data = f, .callback = msgpack_fbuffer_write};
 
+    bool success = true;
     msgpack_pack_array(&packer, n_datamaps);
     for (size_t i = 0; i < n_datamaps; i++) {
-        ch_change_datamap_references_to_strings(maps[i].dm);
-        msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = maps[i].dm};
-        if (msgpack_pack_object(&packer, o))
+        ch_change_datamap_references_to_strings(sorted_maps[i].dm);
+        msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = sorted_maps[i].dm};
+        if (msgpack_pack_object(&packer, o)) {
             CH_LOG_ERROR(ctx, "Failed writing datamaps (errno=%d).", errno);
+            success = false;
+            break;
+        }
     }
-    free(maps);
+    free(sorted_maps);
     fclose(f);
+    return success ? CH_UNPACK_OK : CH_UNPACK_CONSTRAINT_FAIL;
 }
 
-static ch_unpack_result ch_process_msg(ch_process_msg_ctx* ctx, msgpack_object o, bool* save_unpacked)
+// process the msgpack object sent by the payload
+static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, msgpack_object o, bool* save_unpacked)
 {
     CH_DEFINE_KV_SCHEMA(msg_kv_schema,
                         CH_KV_SINGLE(CHMPK_MSG_TYPE, MSGPACK_OBJECT_POSITIVE_INTEGER),
@@ -402,6 +437,7 @@ static ch_unpack_result ch_process_msg(ch_process_msg_ctx* ctx, msgpack_object o
     }
 }
 
+// unpack the buffered data into msgpack
 bool ch_msg_ctx_process(ch_process_msg_ctx* ctx)
 {
     msgpack_unpack_return ret = msgpack_unpacker_next(&ctx->mp_unpacker, &ctx->unpacked_ll->unp);
@@ -418,7 +454,7 @@ bool ch_msg_ctx_process(ch_process_msg_ctx* ctx)
 
     bool save_unpacked = false;
 
-    switch (ch_process_msg(ctx, ctx->unpacked_ll->unp.data, &save_unpacked)) {
+    switch (ch_process_message_pack_msg(ctx, ctx->unpacked_ll->unp.data, &save_unpacked)) {
         case CH_UNPACK_OK:
             break;
         case CH_UNPACK_EXIT:
@@ -428,13 +464,14 @@ bool ch_msg_ctx_process(ch_process_msg_ctx* ctx)
             CH_LOG_ERROR(ctx, "Received wrong msgpack format from payload.");
             return false;
         case CH_UNPACK_OUT_OF_MEMORY:
-            CH_LOG_ERROR(ctx, "Out of memory while unpacking message from payload.");
+            CH_LOG_ERROR(ctx, "Out of memory while processing message from payload.");
             return false;
         default:
             assert(0);
             return false;
     }
 
+    // save the unpacked object if had a new datamap by adding it the the linked list, otherwise reuse it
     if (save_unpacked) {
         ch_mp_unpacked_ll* head = calloc(1, sizeof(ch_mp_unpacked_ll));
         if (!head) {

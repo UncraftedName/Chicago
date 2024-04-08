@@ -14,19 +14,16 @@ typedef struct ch_send_ctx {
     HANDLE pipe;
     msgpack_sbuffer mp_buf;
     msgpack_packer mp_pk;
-
-    // CreateInterfaceFn vstdlib_factory;
-    // ICvar* g_pCVar;
 } ch_send_ctx;
 
 void ch_send_wave(ch_send_ctx* ctx, ch_comm_msg_type type);
 void ch_send_log_info(ch_send_ctx* ctx, const char* fmt, ...);
 
-typedef struct ch_send_datamap_cb_info {
+typedef struct ch_send_datamap_cb_udata {
     ch_send_ctx* send_ctx;
     ch_search_ctx* sc;
     ch_game_module mod_idx;
-} ch_send_datamap_cb_info;
+} ch_send_datamap_cb_udata;
 
 void ch_send_datamap_cb(const datamap_t* dm, void* info);
 __declspec(noreturn) void ch_send_err_and_exit(ch_send_ctx* ctx, const char* fmt, ...);

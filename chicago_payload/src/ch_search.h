@@ -91,6 +91,8 @@ void ch_get_module_info(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
 void ch_find_entity_factory_cvar(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
+// find the static init table from a single static init function
+// TODO this doesn't find the entire table if it has nulls, prolly need to go through __cinit
 void ch_find_static_inits_from_single(struct ch_send_ctx* ctx,
                                       ch_search_ctx* sc,
                                       ch_game_module mod_idx,
