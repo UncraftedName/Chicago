@@ -10,14 +10,12 @@
 #include <stdlib.h>
 
 #include "ch_recv.h"
-#include "ch_msgpack.h"
 
 #pragma comment(lib, "Pathcch.lib")
 
 #define MAX_SELECT_GAMES 9
 
 typedef struct ch_recv_ctx {
-    msgpack_zone mp_zone;
     ch_log_level log_level;
     HANDLE pipe;
     HANDLE game;
@@ -407,11 +405,6 @@ void ch_do_inject_and_recv_maps(const char* file_output_path, ch_log_level log_l
         .file_output_path = file_output_path,
     };
     ch_recv_ctx* ctx = &rctx;
-
-    if (!msgpack_zone_init(&ctx->mp_zone, CH_PIPE_INIT_BUF_SIZE)) {
-        CH_LOG_ERROR(ctx, "Out of memory (ch_recv_ctx init).");
-        return;
-    }
 
     BOOL ok = TRUE;
 
