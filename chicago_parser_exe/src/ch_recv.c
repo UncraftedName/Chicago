@@ -426,9 +426,11 @@ static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, ms
             ch_verify_and_hash_dm_cb_udata udata = {.ctx = ctx, .save_unpacked = save_unpacked};
             CH_CHECK(ch_recurse_visit_datamaps(msg_data, ch_verify_and_hash_dm_cb, &udata));
             CH_LOG_INFO(ctx,
-                        "Received datamap %.*s.\n",
+                        "Received datamap %.*s from %.*s.\n",
                         msg_data.via.map.ptr[CH_KV_IDX_DM_NAME].val.via.str.size,
-                        msg_data.via.map.ptr[CH_KV_IDX_DM_NAME].val.via.str.ptr);
+                        msg_data.via.map.ptr[CH_KV_IDX_DM_NAME].val.via.str.ptr,
+                        msg_data.via.map.ptr[CH_KV_IDX_DM_MODULE].val.via.str.size,
+                        msg_data.via.map.ptr[CH_KV_IDX_DM_MODULE].val.via.str.ptr);
             return CH_UNPACK_OK;
             break;
         case CH_MSG_LINKED_NAME:
