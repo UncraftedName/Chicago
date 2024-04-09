@@ -98,6 +98,16 @@ typedef struct ch_state_file {
     };
 } ch_state_file;
 
+typedef struct ch_datamap_collection {
+    const ch_datamap* maps;
+    size_t n_maps;
+} ch_datamap_collection;
+
+typedef struct ch_parse_params {
+    ch_datamap_collection* collections;
+    size_t n_collections;
+} ch_parse_params;
+
 typedef struct ch_parsed_save_data {
     // char game_id[32];
     ch_tag tag;

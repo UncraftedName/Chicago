@@ -15,7 +15,13 @@ int main(void)
         printf("Test result: %.4s\n", save_data.tag.id);
     ch_free_parsed_save_data(&save_data);*/
 
-    ch_do_inject_and_recv_maps("datamaps2.msgpack", CH_LL_INFO);
+    ch_datamap_save_info save_info = {
+        .output_file_path = "datamaps2.msgpack",
+        .game_name = "Portal 1",
+        .game_version = "5135",
+    };
+
+    ch_do_inject_and_recv_maps(&save_info, CH_LL_INFO);
 
     return 0;
 }

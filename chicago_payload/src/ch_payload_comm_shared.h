@@ -6,6 +6,7 @@
 #include <stdbool.h>
 
 #define CH_PIPE_NAME "\\\\.\\pipe\\chicago_pipe"
+#define CH_VERSION 1
 
 // TODO test these for really small sizes
 #if 1
@@ -85,6 +86,8 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 * in order to verify that all datamaps are distinct. When the datamaps are saved
 * to disk, CHMPK_MSG_DM_BASE & CHMPK_MSG_TD_EMBEDDED fields are instead strings
 * which uniquely reference a datamap that came before.
+* 
+* TODO include the format when saved to disk
 */
 #define CHMPK_MSG_TYPE "msg_type"
 #define CHMPK_MSG_DATA "msg_data"
@@ -117,3 +120,10 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 #define CH_KV_IDX_TD_EMBEDDED 7
 
 // TODO override_field
+
+// high level save info
+
+#define CHMPK_MSG_CHICAGO_VERSION "chicago_version"
+#define CHMPK_MSG_GAME_NAME "game_name"
+#define CHMPK_MSG_GAME_VERSION "game_version"
+#define CHMPK_MSG_DATAMAPS "datamaps"

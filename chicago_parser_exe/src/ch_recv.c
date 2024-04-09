@@ -39,7 +39,7 @@ typedef struct ch_process_msg_ctx {
     */
     struct hashmap* dm_hashmap;
 
-    const char* output_file_path;
+    const ch_datamap_save_info* save_info;
 } ch_process_msg_ctx;
 
 typedef struct ch_hashmap_entry {
@@ -72,13 +72,13 @@ static int ch_hashmap_entry_compare(const void* a, const void* b, void* udata)
     return ch_cmp_mp_str(((const ch_hashmap_entry*)a)->name, ((const ch_hashmap_entry*)b)->name);
 }
 
-ch_process_msg_ctx* ch_msg_ctx_alloc(ch_log_level log_level, size_t init_chunk_size, const char* output_file_path)
+ch_process_msg_ctx* ch_msg_ctx_alloc(ch_log_level log_level, size_t init_chunk_size, const ch_datamap_save_info* save_info)
 {
     ch_process_msg_ctx* ctx = calloc(1, sizeof(ch_process_msg_ctx));
     if (!ctx)
         return NULL;
     ctx->log_level = log_level;
-    ctx->output_file_path = output_file_path;
+    ctx->save_info = save_info;
     ctx->unpacked_ll = calloc(1, sizeof(ch_mp_unpacked_ll));
     if (!ctx->unpacked_ll)
         goto failed;
@@ -333,6 +333,34 @@ static void ch_change_datamap_references_to_strings(msgpack_object_map dm)
     }
 }
 
+static bool ch_pack_to_file(msgpack_packer* pk,
+                            const ch_map_sort_key* sorted_maps,
+                            size_t n_sorted_maps,
+                            const ch_datamap_save_info* save_info)
+{
+#define CH_TRY_PACK(expr)        \
+    do {                         \
+        if (msgpack_pack_##expr) \
+            return false;        \
+    } while (0)
+
+    CH_TRY_PACK(map(pk, 4));
+    CH_TRY_PACK(str_with_body(pk, CHMPK_MSG_CHICAGO_VERSION, strlen(CHMPK_MSG_CHICAGO_VERSION)));
+    CH_TRY_PACK(int(pk, CH_VERSION));
+    CH_TRY_PACK(str_with_body(pk, CHMPK_MSG_GAME_NAME, strlen(CHMPK_MSG_GAME_NAME)));
+    CH_TRY_PACK(str_with_body(pk, save_info->game_name, strlen(save_info->game_name)));
+    CH_TRY_PACK(str_with_body(pk, CHMPK_MSG_GAME_VERSION, strlen(CHMPK_MSG_GAME_VERSION)));
+    CH_TRY_PACK(str_with_body(pk, save_info->game_version, strlen(save_info->game_version)));
+    CH_TRY_PACK(str_with_body(pk, CHMPK_MSG_DATAMAPS, strlen(CHMPK_MSG_DATAMAPS)));
+    CH_TRY_PACK(array(pk, n_sorted_maps));
+    for (size_t i = 0; i < n_sorted_maps; i++) {
+        ch_change_datamap_references_to_strings(sorted_maps[i].dm);
+        msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = sorted_maps[i].dm};
+        CH_TRY_PACK(object(pk, o));
+    }
+    return true;
+}
+
 static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
 {
     // TODO add checks here to see if we receieved any data
@@ -363,28 +391,19 @@ static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
     */
     qsort(sorted_maps, n_datamaps, sizeof *sorted_maps, ch_cmp_datamaps);
 
-    FILE* f = fopen(ctx->output_file_path, "wb");
+    FILE* f = fopen(ctx->save_info->output_file_path, "wb");
     if (!f) {
-        CH_LOG_ERROR(ctx, "Failed to write to file '%s', (errno=%d)", ctx->output_file_path, errno);
+        CH_LOG_ERROR(ctx, "Failed to write to file '%s', (errno=%d)", ctx->save_info->output_file_path, errno);
         return CH_UNPACK_CONSTRAINT_FAIL;
     }
-    CH_LOG_INFO(ctx, "Writing %zu datamaps to '%s'.\n", n_datamaps, ctx->output_file_path);
+    CH_LOG_INFO(ctx, "Writing %zu datamaps to '%s'.\n", n_datamaps, ctx->save_info->output_file_path);
     msgpack_packer packer = {.data = f, .callback = msgpack_fbuffer_write};
-
-    bool success = true;
-    msgpack_pack_array(&packer, n_datamaps);
-    for (size_t i = 0; i < n_datamaps; i++) {
-        ch_change_datamap_references_to_strings(sorted_maps[i].dm);
-        msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = sorted_maps[i].dm};
-        if (msgpack_pack_object(&packer, o)) {
-            CH_LOG_ERROR(ctx, "Failed writing datamaps (errno=%d).", errno);
-            success = false;
-            break;
-        }
-    }
+    bool ok = ch_pack_to_file(&packer, sorted_maps, n_datamaps, ctx->save_info);
+    if (!ok)
+        CH_LOG_ERROR(ctx, "Failed writing datamaps (errno=%d).", errno);
     free(sorted_maps);
     fclose(f);
-    return success ? CH_UNPACK_OK : CH_UNPACK_CONSTRAINT_FAIL;
+    return ok ? CH_UNPACK_OK : CH_UNPACK_CONSTRAINT_FAIL;
 }
 
 // process the msgpack object sent by the payload
