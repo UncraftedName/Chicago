@@ -6,7 +6,7 @@
 #include <stdbool.h>
 
 #define CH_PIPE_NAME "\\\\.\\pipe\\chicago_pipe"
-#define CH_VERSION 1
+#define CH_VERSION 2
 
 // TODO test these for really small sizes
 #if 1
@@ -72,6 +72,7 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 *   CHMPK_MSG_TD_NAME:           str,
 *   CHMPK_MSG_TD_TYPE:           ch_field_type,
 *   CHMPK_MSG_TD_FLAGS:          int,
+*   CHMPK_MSG_TD_EXTERNAL_NAME   str|nil,
 *   CHMPK_MSG_TD_OFF:            int,
 *   CHMPK_MSG_TD_TOTAL_SIZE:     int,
 *   CHMPK_MSG_TD_RESTORE_OPS:    int|nil, (offset into .dll)
@@ -109,6 +110,7 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 #define CHMPK_MSG_TD_NAME "name"
 #define CHMPK_MSG_TD_TYPE "type"
 #define CHMPK_MSG_TD_FLAGS "flags"
+#define CHMPK_MSG_TD_EXTERNAL_NAME "external_name"
 #define CHMPK_MSG_TD_OFF "offset"
 #define CHMPK_MSG_TD_TOTAL_SIZE "total_size_bytes"
 #define CHMPK_MSG_TD_RESTORE_OPS "restore_ops"
@@ -117,7 +119,7 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 #define CHMPK_MSG_TD_OVERRIDE_COUNT "override_count"
 #define CHMPK_MSG_TD_TOL "float_tolerance"
 
-#define CH_KV_IDX_TD_EMBEDDED 7
+#define CH_KV_IDX_TD_EMBEDDED 8
 
 // TODO override_field
 

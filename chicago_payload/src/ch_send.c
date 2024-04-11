@@ -90,7 +90,7 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_udata* info, const datamap_t* d
     } else {
         CH_CHK_MP_PACK(array(pk, dm->dataNumFields));
         for (int i = 0; i < dm->dataNumFields; i++) {
-            CH_CHK_MP_PACK(map(pk, 10));
+            CH_CHK_MP_PACK(map(pk, 11));
             const typedescription_t* desc = &dm->dataDesc[i];
             CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_NAME);
             CH_CHK_MP_PACK_CSTR(pk, desc->fieldName);
@@ -98,6 +98,11 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_udata* info, const datamap_t* d
             CH_CHK_MP_PACK(int(pk, desc->fieldType));
             CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_FLAGS);
             CH_CHK_MP_PACK(int(pk, desc->flags));
+            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_EXTERNAL_NAME);
+            if (desc->externalName)
+                CH_CHK_MP_PACK_CSTR(pk, desc->externalName);
+            else
+                CH_CHK_MP_PACK(nil(pk));
             CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_OFF);
             CH_CHK_MP_PACK(int(pk, desc->fieldOffset[0]));
             CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_TOTAL_SIZE);

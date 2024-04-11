@@ -72,7 +72,9 @@ static int ch_hashmap_entry_compare(const void* a, const void* b, void* udata)
     return ch_cmp_mp_str(((const ch_hashmap_entry*)a)->name, ((const ch_hashmap_entry*)b)->name);
 }
 
-ch_process_msg_ctx* ch_msg_ctx_alloc(ch_log_level log_level, size_t init_chunk_size, const ch_datamap_save_info* save_info)
+ch_process_msg_ctx* ch_msg_ctx_alloc(ch_log_level log_level,
+                                     size_t init_chunk_size,
+                                     const ch_datamap_save_info* save_info)
 {
     ch_process_msg_ctx* ctx = calloc(1, sizeof(ch_process_msg_ctx));
     if (!ctx)
@@ -245,6 +247,7 @@ static ch_process_result ch_check_dm_schema_cb(const msgpack_object* o, void* us
                             CH_KV_SINGLE(CHMPK_MSG_TD_NAME, MSGPACK_OBJECT_STR),
                             CH_KV_SINGLE(CHMPK_MSG_TD_TYPE, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_SINGLE(CHMPK_MSG_TD_FLAGS, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_EITHER(CHMPK_MSG_TD_EXTERNAL_NAME, MSGPACK_OBJECT_STR, MSGPACK_OBJECT_NIL),
                             CH_KV_SINGLE(CHMPK_MSG_TD_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_SINGLE(CHMPK_MSG_TD_TOTAL_SIZE, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_EITHER(CHMPK_MSG_TD_RESTORE_OPS, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
