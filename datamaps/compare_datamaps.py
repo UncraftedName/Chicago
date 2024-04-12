@@ -2,41 +2,20 @@ import msgpack
 import json
 import argparse
 import pathlib
-from typing import Tuple
-
-HEADER_CH_VERSION = 1
-HEADER_KV_CH_VERSION = 'chicago_version'
-HEADER_KV_GAME_NAME = 'game_name'
-HEADER_KV_GAME_VERSION = 'game_version'
-HEADER_KV_DATAMAPS = 'datamaps'
-
-DM_KV_NAME = 'name'
-DM_KV_OFF = 'module_offset'
-DM_KV_FIELDS = 'fields'
-
-TD_KV_NAME = 'name'
-TD_KV_OFF = 'offset'
-TD_KV_RESTORE_OPS = 'restore_ops'
-TD_KV_INPUT_FUNC = 'input_func'
+from typing import Tuple, List, get_type_hints
+from collections import namedtuple
+import difflib
+from datamap_utils import *
 
 
-class IgnoreKeysDict:
-    def __init__(self, d: dict, ignore_fields: set) -> None:
-        self.d = d
-        self.ignore_fields = ignore_fields
-
-    def __eq__(self, o: object) -> bool:
-        if not isinstance(o, IgnoreKeysDict):
-            return False
-        for k, v in self.d.items():
-            if k in self.ignore_fields:
-                continue
-            if o.d.get(k) != v:
-                return False
-        return True
-
-    # def __getattr__(self, name: str):
-    #     return getattr(self.d, name)
+def dicts_equal(d1: dict, d2: dict, compare_keys: List[str]) -> List[str]:
+    diff_fields = []
+    for k in compare_keys:
+        v1 = d1.get(k)
+        v2 = d2.get(k)
+        if v1 != v2:
+            diff_fields.append(k)
+    return diff_fields
 
 
 def check_datamaps_ext(file_path: str) -> pathlib.Path:
@@ -55,120 +34,126 @@ def load_datamap_file(p: pathlib.Path) -> object:
             return msgpack.load(f)
 
 
-# TODO verify the usual kv stuff
-def verify_datamaps(dm):
-    if not isinstance(dm, dict) \
-            or dm.get(HEADER_KV_CH_VERSION) != HEADER_CH_VERSION \
-            or set(dm.keys()) != {
-                HEADER_KV_CH_VERSION,
-                HEADER_KV_GAME_NAME,
-                HEADER_KV_GAME_VERSION,
-                HEADER_KV_DATAMAPS
-    }:
-        raise Exception('Bad file header')
+class DiffChecker:
+    def __init__(self, dm_sfs: List[DataMapSaveFile_V2]) -> None:
+        self.dm_dfs = dm_sfs
+        self.game_names = [f'{dm_sf.game_name} ({dm_sf.game_version})' for dm_sf in dm_sfs]
+        self.dm_lookup = [{dm.name: dm for dm in dm_sfs[i].datamaps} for i in range(2)]
+        self.dm_names = [set(self.dm_lookup[i].keys()) for i in range(2)]
+        self.shared_classes = sorted(self.dm_names[0] & self.dm_names[1])
 
+    def print_class_diffs(self):
+        if self.dm_names[0] == self.dm_names[1]:
+            print('Datamap classes are the same.')
+            return
+        added = sorted(self.dm_names[1] - self.dm_names[0])
+        dropped = sorted(self.dm_names[0] - self.dm_names[1])
+        if added:
+            print('Added classes:')
+            for name in added:
+                print(f'  {name}')
+            print()
+        if dropped:
+            print('Dropped classes:')
+            for name in dropped:
+                print(f'  {name}')
+            print()
 
-def compare_datamaps(dmos: Tuple[dict, dict], classes_only: bool, ignore_offsets: bool):
-    game_names = [f'{dmo[HEADER_KV_GAME_NAME]} ({dmo[HEADER_KV_GAME_VERSION]})' for dmo in dmos]
-    if game_names[0] == game_names[1]:
-        print(f"Game names are '{
-            game_names[0]}' in both files, either they are identical or the game/version was set incorrectly.")
-        return
-    dm_lookup = [
-        {dm[DM_KV_NAME]: dm for dm in dms[HEADER_KV_DATAMAPS]}
-        for dms in dmos
-    ]
-    names = [set(x.keys()) for x in dm_lookup]
+        # TODO check if a datamap was moved to a different module
 
-    # show differences in datamap classes
+    def print_all_dm_diffs(self):
+        for sc in self.shared_classes:
+            self.print_dm_diffs(sc, [self.dm_lookup[i][sc].fields for i in range(2)])
 
-    if names[0] == names[1]:
-        print('Datamap classes are the same.')
-    else:
-        for i in range(2):
-            extra_names = names[i] - names[1 - i]
-            if extra_names:
-                print(f"Extra datamaps in '{game_names[i]}':")
-                for e in extra_names:
-                    print(f'  + {e}')
-            else:
-                print(f"No extra datamaps in '{game_names[i]}'.")
+    def print_dm_diffs(self, dm_name: str, td_lists: List[List[TypeDesc_V2]]):
+        diff_reported = False
 
-    if classes_only:
-        return
+        def _report_header():
+            nonlocal diff_reported
+            if not diff_reported:
+                print(f"Class {dm_name}:")
+            diff_reported = True
 
-    print()
-    print('-'*20)
-    print()
+        def report_td_diff(s: str):
+            _report_header()
+            print(f'  {s}')
 
-    # now compare fields
+        def report_td_diff_list(strs: List[str]):
+            _report_header()
+            for s in strs:
+                print(f'    {s}')
 
-    overlap_classes = names[0] & names[1]
+        # default pass - doesn't look at offsets, TODO make a version that does
 
-    td_ignore_fields = {TD_KV_RESTORE_OPS, TD_KV_INPUT_FUNC}
-    if ignore_offsets:
-        td_ignore_fields.add(TD_KV_OFF)
-
-    for oc in overlap_classes:
-        dms = [IgnoreKeysDict(dm_lookup[i][oc], {DM_KV_OFF}) for i in range(2)]
-        for dm in dms:
-            dm.d[DM_KV_FIELDS] = IgnoreKeysDict(dm.d[DM_KV_FIELDS], td_ignore_fields)
-        dm_name = dms[0].d[DM_KV_NAME]
-        td_lookup = [{td[TD_KV_NAME]: td for td in dm.d[DM_KV_FIELDS].d} for dm in dms]
-        # I don't think anyone will care if the order of the fields in a map
-        # changed, so sort them and iterate in that order.
-        tds = [
+        # drop VOID & INPUT descs, sort by offset
+        # sort by offset
+        td_lists = [
             sorted(
-                dm.d[DM_KV_FIELDS].d,
-                key=lambda f: (f[TD_KV_OFF], f[TD_KV_NAME])
-            )
-            for dm in dms
+                filter(
+                    lambda td: td.type not in {
+                        FIELD_TYPE.VOID,
+                        FIELD_TYPE.INPUT
+                    } and td.input_func is None,
+                    td_lists[i]
+                ),
+                key=lambda td: td.offset
+            ) for i in range(2)
         ]
-        add_list = ([], [])
-        diff_list = []
+        td_lookup = [{td.name: td for td in td_lists[i]} for i in range(2)]
+        td_names = [set(td_lookup[i].keys()) for i in range(2)]
+
+        added = td_names[1] - td_names[0]
+        dropped = td_names[0] - td_names[1]
+        # same = td_names[0] & td_names[1]
+
+        if added:
+            report_td_diff('Added fields:')
+            report_td_diff_list(sorted(added, key=lambda name: td_lookup[1][name].offset))
+        if dropped:
+            report_td_diff('Dropped fields:')
+            report_td_diff_list(sorted(dropped, key=lambda name: td_lookup[0][name].offset))
+
+        cmp_fields = (TD_KV_TYPE, TD_KV_FLAGS, TD_KV_TOTAL_SIZE,
+                      TD_KV_INPUT_FUNC, TD_KV_RESTORE_OPS, TD_KV_EMBEDDED)
+        ptr_fields = [name for name, t in get_type_hints(TypeDesc_V2).items() if t == Optional[int]]
+
+        moved = set()
         i = 0
         j = 0
-        while i < len(tds[0]) and j < len(tds[1]):
-            if i == len(tds[0]):
-                # past the end of the first type description list
-                add_list[1].append(f'  + {dm_name}.{tds[1][j][TD_KV_NAME]}')
-                j += 1
-                continue
-            if j == len(tds[0]):
-                # past the end of the second type description list
-                add_list[0].append(f'  + {dm_name}.{tds[0][i][TD_KV_NAME]}')
+        while i < len(td_lists[0]) and j < len(td_lists[1]):
+            td0 = td_lists[0][i]
+            td1 = td_lists[1][j]
+            if td0.name in added or td0.name in dropped or td0.name in moved:
                 i += 1
                 continue
-            td0 = IgnoreKeysDict(tds[0][i], td_ignore_fields)
-            td1 = IgnoreKeysDict(tds[1][j], td_ignore_fields)
-            names = (td0.d[TD_KV_NAME], td1.d[TD_KV_NAME])
-            if names[0] == names[1]:
-                if td0 != td1:
-                    # same name, different properties
-                    diff_list.append(f'field {dm_name}.{names[0]} differs')
-                i += 1
+            if td1.name in added or td1.name in dropped or td1.name in moved:
                 j += 1
                 continue
-            # one of the classes has a field that the other doesn't
-            if names[0] not in td_lookup[1]:
-                add_list[0].append(f'  + {dm_name}.{names[0]}')
-                i += 1
-            else:
-                add_list[1].append(f'  + {dm_name}.{names[1]}')
+            if td0.name != td1.name:
+                # field was moved
+                td1 = td_lookup[1][td0.name]
+                moved.add(td0.name)
+                report_td_diff(f"Field '{td0.name}' was moved")
+            # names are equal, compare the fields
+            for cmp_field in cmp_fields:
+                a0 = getattr(td0, cmp_field)
+                a1 = getattr(td1, cmp_field)
+                if cmp_field in ptr_fields:
+                    if type(a0) != type(a1):
+                        a0 = 'null' if a0 is None else 'exists'
+                        a1 = 'null' if a1 is None else 'exists'
+                        report_td_diff(f"Field '{td0.name}' differs by '{
+                                       cmp_field}' ({a0} -> {a1})")
+                else:
+                    if a0 != a1:
+                        report_td_diff(f"Field '{td0.name}' differs by '{
+                                       cmp_field}' ({repr(a0)} -> {repr(a1)})")
+            i += 1
+            if td0.name not in moved:
                 j += 1
-        del i, j
-        if add_list[0] or add_list[1] or diff_list:
-            # we found differences!
-            for diff in diff_list:
-                print(diff)
-            for i in range(2):
-                if add_list[i]:
-                    print(f"Extra fields in '{game_names[i]}' ({dm_name}):")
-                    for add in add_list[i]:
-                        print(add)
 
-
-# TODO: the one thing this strategy doesn't account for is fields being moved around ://
+        if diff_reported:
+            print()
 
 
 if __name__ == '__main__':
@@ -186,13 +171,19 @@ if __name__ == '__main__':
         action='store_true',
         help='if set, only show the differences in datamap classes and ignore fields'
     )
-    parser.add_argument(
-        '--ignore_offsets',
-        action='store_true',
-        help='if set, does not show differences in field offsets (only relevant if comparing fields)'
-    )
+    # parser.add_argument(
+    #     '--diff_offsets',
+    #     action='store_true',
+    #     help='if set, shows the differences in offsets'
+    # )
     args = parser.parse_args()
     dm_paths = args.datamap_save_files
     dmos = [load_datamap_file(dm_paths[j]) for j in range(2)]
-    [verify_datamaps(dmo) for dmo in dmos]
-    compare_datamaps(tuple(dmos), args.classes_only, args.ignore_offsets)
+    print('Validating datamap save objects\n')
+    # [validate_datamap_save_schema_v2(dmo) for dmo in dmos]
+    dmos_unpacked = [save_object_to_dataclass_v2(dmo, False) for dmo in dmos]
+    dc = DiffChecker(dmos_unpacked)
+    print(f"Finding diffs from '{dc.game_names[0]}' to '{dc.game_names[1]}'...\n")
+    dc.print_class_diffs()
+    if not args.classes_only:
+        dc.print_all_dm_diffs()
