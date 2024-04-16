@@ -7,7 +7,8 @@
 #include <stdio.h>
 
 #include "ch_search.h"
-#include "ch_msgpack.h"
+
+#include "thirdparty/msgpack/include/ch_msgpack.h"
 
 typedef struct ch_send_ctx {
     HANDLE module_;

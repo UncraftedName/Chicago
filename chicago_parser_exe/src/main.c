@@ -2,7 +2,6 @@
 #include <string.h>
 
 #include "ch_recv.h"
-#include "ch_msgpack.h"
 #include "ch_save.h"
 
 int main(void)

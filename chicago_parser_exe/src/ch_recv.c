@@ -5,7 +5,8 @@
 #include "SDK/datamap.h"
 #include "thirdparty/hashmap/hashmap.h"
 
-#include "msgpack/fbuffer.h"
+#include "thirdparty/msgpack/include/ch_msgpack.h"
+#include "thirdparty/msgpack/include/msgpack/fbuffer.h"
 
 typedef struct ch_mp_unpacked_ll {
     msgpack_unpacked unp;

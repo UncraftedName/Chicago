@@ -15,7 +15,7 @@
 #define CH_PIPE_TIMEOUT_MS 1000
 #endif
 
-// some datamaps are close to 100MB went sent over IPC in p1-5135
+// some datamaps are close to 100KB went sent over IPC in p1-5135
 #define CH_PIPE_INIT_BUF_SIZE (1024 * 128)
 
 typedef enum ch_game_module {

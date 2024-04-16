@@ -6,9 +6,9 @@ if (MSVC)
 endif()
 
 include_directories(
-	src
-	include
-	include/msgpack
+	"${PROJECT_SOURCE_DIR}/include"
+	"${PROJECT_SOURCE_DIR}/include/msgpack"
 )
+
 file(GLOB SRC_FILES "${PROJECT_SOURCE_DIR}/src/*.c")
 add_library(msgpack STATIC ${SRC_FILES})

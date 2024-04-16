@@ -8,8 +8,10 @@ endif()
 include_directories(
 	src
 	../chicago_parse_lib/src
-	../msgpack/include
+	../shared
+	../shared/thirdparty/msgpack/include
 )
+
 file(GLOB SRC_FILES "${PROJECT_SOURCE_DIR}/src/*.c")
 add_library(chicago_payload SHARED ${SRC_FILES})
 add_dependencies(chicago_payload chicago_parse_lib msgpack)
