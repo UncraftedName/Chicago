@@ -1,0 +1,18 @@
+project(brotli)
+set(CMAKE_C_STANDARD 23)
+
+if (MSVC)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4061 /wd4100 /wd4127 /wd4464 /wd4820")
+endif()
+
+include_directories(
+	"${PROJECT_SOURCE_DIR}"
+	"${PROJECT_SOURCE_DIR}/include"
+)
+
+file(
+	GLOB SRC_FILES 
+	"${PROJECT_SOURCE_DIR}/dec/*.c"
+	"${PROJECT_SOURCE_DIR}/common/*.c"
+)
+add_library(brotli STATIC ${SRC_FILES})

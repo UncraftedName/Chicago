@@ -11,6 +11,8 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/bin/${CMAKE_BUILD_TYPE}
 
 add_subdirectory(shared/thirdparty/msgpack)
 add_subdirectory(shared/thirdparty/hashmap)
+add_subdirectory(shared/thirdparty/brotli)
+add_subdirectory(shared/thirdparty/microtar)
 add_subdirectory(chicago_parse_lib)
 add_subdirectory(chicago_payload)
 add_subdirectory(chicago_parser_exe)

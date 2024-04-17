@@ -7,6 +7,8 @@ include_directories(
 	../chicago_payload/src
 	../shared
 	../shared/thirdparty/msgpack/include
+	../shared/thirdparty/brotli
+	../shared/thirdparty/brotli/include
 )
 
 file(GLOB SRC_FILES
@@ -15,5 +17,5 @@ file(GLOB SRC_FILES
 )
 
 add_executable(chicago_parser ${SRC_FILES})
-add_dependencies(chicago_parser chicago_parse_lib msgpack hashmap)
-target_link_libraries(chicago_parser PRIVATE chicago_parse_lib msgpack hashmap)
+add_dependencies(chicago_parser chicago_parse_lib msgpack hashmap brotli microtar)
+target_link_libraries(chicago_parser PRIVATE chicago_parse_lib msgpack hashmap brotli microtar)
