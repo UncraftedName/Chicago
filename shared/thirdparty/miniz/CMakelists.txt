@@ -1,0 +1,9 @@
+project(miniz)
+set(CMAKE_C_STANDARD 23)
+
+if (MSVC)
+	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4548 /wd4820")
+endif()
+
+file(GLOB SRC_FILES "${PROJECT_SOURCE_DIR}/miniz.c")
+add_library(miniz STATIC ${SRC_FILES})

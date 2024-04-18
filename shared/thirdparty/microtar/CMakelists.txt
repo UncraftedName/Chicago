@@ -1,9 +1,0 @@
-project(microtar)
-set(CMAKE_C_STANDARD 23)
-
-if (MSVC)
-	set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /wd4244")
-endif()
-
-file(GLOB SRC_FILES "${PROJECT_SOURCE_DIR}/microtar.c")
-add_library(microtar STATIC ${SRC_FILES})

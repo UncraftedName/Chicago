@@ -1,0 +1,6 @@
+To get the appropriate header & source files for miniz,
+clone https://github.com/richgel999/miniz.git.
+Then simply run open cmd in msgpack-c and run:
+'cmake -DAMALGAMATE_SOURCES=ON -DBUILD_SHARED_LIBS=ON .'
+Copy the files from the 'amalgamation' folder.
+- uncrafted
