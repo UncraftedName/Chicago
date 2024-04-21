@@ -21,7 +21,7 @@ typedef struct ch_recv_ctx {
     HANDLE game;
     HANDLE wait_event;
     LPVOID remote_thread_alloc;
-    const ch_datamap_save_info* save_info;
+    const ch_datamap_collection_info* collection_save_info;
 } ch_recv_ctx;
 
 // print the fmt followed by the winapi_error
@@ -304,7 +304,7 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
         CH_RS_DONE,
     } state = CH_RS_RUNNING;
 
-    struct ch_process_msg_ctx* process_ctx = ch_msg_ctx_alloc(ctx->log_level, CH_PIPE_INIT_BUF_SIZE, ctx->save_info);
+    struct ch_process_msg_ctx* process_ctx = ch_msg_ctx_alloc(ctx->log_level, CH_PIPE_INIT_BUF_SIZE, ctx->collection_save_info);
 
     if (!process_ctx) {
         CH_LOG_ERROR(ctx, "Out of memory (ch_recv_loop malloc).");
@@ -393,7 +393,7 @@ BOOL ch_recv_loop(ch_recv_ctx* ctx)
             ok = x;     \
     }
 
-void ch_do_inject_and_recv_maps(const ch_datamap_save_info* save_info, ch_log_level log_level)
+void ch_do_inject_and_recv_maps(const ch_datamap_collection_info* collection_save_info, ch_log_level log_level)
 {
     ch_recv_ctx rctx = {
         .log_level = log_level,
@@ -401,7 +401,7 @@ void ch_do_inject_and_recv_maps(const ch_datamap_save_info* save_info, ch_log_le
         .game = INVALID_HANDLE_VALUE,
         .wait_event = NULL,
         .remote_thread_alloc = NULL,
-        .save_info = save_info,
+        .collection_save_info = collection_save_info,
     };
     ch_recv_ctx* ctx = &rctx;
 

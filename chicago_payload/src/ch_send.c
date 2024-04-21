@@ -24,9 +24,9 @@ int ch_msg_preamble(ch_send_ctx* ctx, ch_comm_msg_type type)
     msgpack_sbuffer_clear(&ctx->mp_buf);
     msgpack_packer* pk = &ctx->mp_pk;
     CH_CHK_MP_PACK(map(pk, 2));
-    CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TYPE);
+    CH_CHK_MP_PACK_CSTR(pk, CH_IPC_TYPE_key);
     CH_CHK_MP_PACK(int(pk, type));
-    CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_DATA);
+    CH_CHK_MP_PACK_CSTR(pk, CH_IPC_DATA_key);
     return 0;
 }
 
@@ -73,16 +73,16 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_udata* info, const datamap_t* d
     if (!dm)
         return msgpack_pack_nil(pk);
     CH_CHK_MP_PACK(map(pk, 5));
-    CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_DM_NAME);
+    CH_CHK_MP_PACK_CSTR(pk, CH_DM_NAME_key);
     CH_CHK_MP_PACK_CSTR(pk, dm->dataClassName);
-    CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_DM_MODULE);
+    CH_CHK_MP_PACK_CSTR(pk, CH_DM_MODULE_key);
     CH_CHK_MP_PACK_CSTR(pk, ch_mod_names[info->mod_idx]);
-    CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_DM_MODULE_OFF);
+    CH_CHK_MP_PACK_CSTR(pk, CH_DM_MODULE_OFF_key);
     CH_CHK(ch_pack_module_offset(info, (ch_ptr)dm));
-    CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_DM_BASE);
+    CH_CHK_MP_PACK_CSTR(pk, CH_DM_BASE_key);
     CH_CHK(ch_recurse_pack_dm(info, dm->baseMap));
 
-    CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_DM_FIELDS);
+    CH_CHK_MP_PACK_CSTR(pk, CH_DM_FIELDS_key);
     typedescription_t empty_desc = {0};
     if (dm->dataNumFields == 1 && !memcmp(&empty_desc, &dm->dataDesc[0], sizeof(typedescription_t))) {
         // single empty field, this actually means no fields
@@ -92,30 +92,30 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_udata* info, const datamap_t* d
         for (int i = 0; i < dm->dataNumFields; i++) {
             CH_CHK_MP_PACK(map(pk, 11));
             const typedescription_t* desc = &dm->dataDesc[i];
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_NAME);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_NAME_key);
             CH_CHK_MP_PACK_CSTR(pk, desc->fieldName);
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_TYPE);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_TYPE_key);
             CH_CHK_MP_PACK(int(pk, desc->fieldType));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_FLAGS);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_FLAGS_key);
             CH_CHK_MP_PACK(int(pk, desc->flags));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_EXTERNAL_NAME);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_EXTERNAL_NAME_key);
             if (desc->externalName)
                 CH_CHK_MP_PACK_CSTR(pk, desc->externalName);
             else
                 CH_CHK_MP_PACK(nil(pk));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_OFF);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_OFF_key);
             CH_CHK_MP_PACK(int(pk, desc->fieldOffset[0]));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_TOTAL_SIZE);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_TOTAL_SIZE_key);
             CH_CHK_MP_PACK(int(pk, desc->fieldSizeInBytes));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_RESTORE_OPS);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_RESTORE_OPS_key);
             CH_CHK(ch_pack_module_offset(info, desc->pSaveRestoreOps));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_INPUT_FUNC);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_INPUT_FUNC_key);
             CH_CHK(ch_pack_module_offset(info, desc->inputFunc));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_EMBEDDED);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_EMBEDDED_key);
             CH_CHK(ch_recurse_pack_dm(info, desc->td));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_OVERRIDE_COUNT);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_OVERRIDE_COUNT_key);
             CH_CHK_MP_PACK(int(pk, desc->override_count));
-            CH_CHK_MP_PACK_CSTR(pk, CHMPK_MSG_TD_TOL);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_TOL_key);
             CH_CHK_MP_PACK(float(pk, desc->fieldTolerance));
         }
     }

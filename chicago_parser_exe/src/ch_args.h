@@ -7,13 +7,13 @@ typedef enum ch_log_level {
 
 #define CH_LOG_INFO(ctx, ...)             \
     do {                                  \
-        if (ctx->log_level <= CH_LL_INFO) \
+        if ((ctx)->log_level <= CH_LL_INFO) \
             fprintf(stdout, __VA_ARGS__); \
     } while (0)
 
 #define CH_LOG_ERROR(ctx, ...)             \
     do {                                   \
-        if (ctx->log_level <= CH_LL_ERROR) \
+        if ((ctx)->log_level <= CH_LL_ERROR) \
             fprintf(stderr, __VA_ARGS__);  \
     } while (0)
 

@@ -8,6 +8,9 @@
 #include "thirdparty/msgpack/include/ch_msgpack.h"
 #include "thirdparty/msgpack/include/msgpack/fbuffer.h"
 
+#include "ch_save.h"
+#include "ch_archive.h"
+
 typedef struct ch_mp_unpacked_ll {
     msgpack_unpacked unp;
     struct ch_mp_unpacked_ll* next;
@@ -40,12 +43,19 @@ typedef struct ch_process_msg_ctx {
     */
     struct hashmap* dm_hashmap;
 
-    const ch_datamap_save_info* save_info;
+    const ch_datamap_collection_info* collection_save_info;
 } ch_process_msg_ctx;
 
 typedef struct ch_hashmap_entry {
+    // key
     msgpack_object_str name;
+
+    // values
+
     msgpack_object o;
+    // these are used later when writing to file
+    size_t n_dependencies;
+    size_t offset;
 } ch_hashmap_entry;
 
 static uint64_t ch_hashmap_entry_hash(const void* key, uint64_t seed0, uint64_t seed1)
@@ -75,13 +85,13 @@ static int ch_hashmap_entry_compare(const void* a, const void* b, void* udata)
 
 ch_process_msg_ctx* ch_msg_ctx_alloc(ch_log_level log_level,
                                      size_t init_chunk_size,
-                                     const ch_datamap_save_info* save_info)
+                                     const ch_datamap_collection_info* collection_save_info)
 {
     ch_process_msg_ctx* ctx = calloc(1, sizeof(ch_process_msg_ctx));
     if (!ctx)
         return NULL;
     ctx->log_level = log_level;
-    ctx->save_info = save_info;
+    ctx->collection_save_info = collection_save_info;
     ctx->unpacked_ll = calloc(1, sizeof(ch_mp_unpacked_ll));
     if (!ctx->unpacked_ll)
         goto failed;
@@ -174,9 +184,9 @@ typedef struct ch_kv_pair {
 } ch_kv_pair;
 
 // clang-format off
-#define CH_KV_SINGLE(name, msgpack_type) {.key_name = name, .allowed_types = {msgpack_type}, .n_allowed = 1}
-#define CH_KV_EITHER(name, msgpack_type1, msgpack_type2) {.key_name = name, .allowed_types = {msgpack_type1, msgpack_type2}, .n_allowed = 2}
-#define CH_KV_WILD(name) {.key_name = name, .n_allowed = 0}
+#define CH_KV_SINGLE(name, msgpack_type) {.key_name = CH_KEY_NAME(name), .allowed_types = {msgpack_type}, .n_allowed = 1}
+#define CH_KV_EITHER(name, msgpack_type1, msgpack_type2) {.key_name = CH_KEY_NAME(name), .allowed_types = {msgpack_type1, msgpack_type2}, .n_allowed = 2}
+#define CH_KV_WILD(name) {.key_name = CH_KEY_NAME(name), .n_allowed = 0}
 // clang-format on
 
 typedef struct ch_kv_schema {
@@ -223,10 +233,10 @@ static ch_process_result ch_recurse_visit_datamaps(const msgpack_object o,
     if (o.type == MSGPACK_OBJECT_NIL)
         return CH_UNPACK_OK;
     CH_CHECK(cb(&o, user_data));
-    CH_CHECK(ch_recurse_visit_datamaps(o.via.map.ptr[CH_KV_IDX_DM_BASE].val, cb, user_data));
-    msgpack_object_array fields = o.via.map.ptr[CH_KV_IDX_DM_FIELDS].val.via.array;
+    CH_CHECK(ch_recurse_visit_datamaps(o.via.map.ptr[CH_DM_BASE].val, cb, user_data));
+    msgpack_object_array fields = o.via.map.ptr[CH_DM_FIELDS].val.via.array;
     for (size_t i = 0; i < fields.size; i++)
-        CH_CHECK(ch_recurse_visit_datamaps(fields.ptr[i].via.map.ptr[CH_KV_IDX_TD_EMBEDDED].val, cb, user_data));
+        CH_CHECK(ch_recurse_visit_datamaps(fields.ptr[i].via.map.ptr[CH_TD_EMBEDDED].val, cb, user_data));
     return CH_UNPACK_OK;
 }
 
@@ -234,28 +244,28 @@ static ch_process_result ch_check_dm_schema_cb(const msgpack_object* o, void* us
 {
     (void)user_data;
     CH_DEFINE_KV_SCHEMA(dm_kv_schema,
-                        CH_KV_SINGLE(CHMPK_MSG_DM_NAME, MSGPACK_OBJECT_STR),
-                        CH_KV_SINGLE(CHMPK_MSG_DM_MODULE, MSGPACK_OBJECT_STR),
-                        CH_KV_SINGLE(CHMPK_MSG_DM_MODULE_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
-                        CH_KV_EITHER(CHMPK_MSG_DM_BASE, MSGPACK_OBJECT_MAP, MSGPACK_OBJECT_NIL),
-                        CH_KV_SINGLE(CHMPK_MSG_DM_FIELDS, MSGPACK_OBJECT_ARRAY));
+                        CH_KV_SINGLE(CH_DM_NAME, MSGPACK_OBJECT_STR),
+                        CH_KV_SINGLE(CH_DM_MODULE, MSGPACK_OBJECT_STR),
+                        CH_KV_SINGLE(CH_DM_MODULE_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                        CH_KV_EITHER(CH_DM_BASE, MSGPACK_OBJECT_MAP, MSGPACK_OBJECT_NIL),
+                        CH_KV_SINGLE(CH_DM_FIELDS, MSGPACK_OBJECT_ARRAY));
     CH_CHECK(ch_check_kv_schema(*o, dm_kv_schema));
 
-    msgpack_object_array fields = o->via.map.ptr[CH_KV_IDX_DM_FIELDS].val.via.array;
+    msgpack_object_array fields = o->via.map.ptr[CH_DM_FIELDS].val.via.array;
 
     for (size_t i = 0; i < fields.size; i++) {
         CH_DEFINE_KV_SCHEMA(dm_td_schema,
-                            CH_KV_SINGLE(CHMPK_MSG_TD_NAME, MSGPACK_OBJECT_STR),
-                            CH_KV_SINGLE(CHMPK_MSG_TD_TYPE, MSGPACK_OBJECT_POSITIVE_INTEGER),
-                            CH_KV_SINGLE(CHMPK_MSG_TD_FLAGS, MSGPACK_OBJECT_POSITIVE_INTEGER),
-                            CH_KV_EITHER(CHMPK_MSG_TD_EXTERNAL_NAME, MSGPACK_OBJECT_STR, MSGPACK_OBJECT_NIL),
-                            CH_KV_SINGLE(CHMPK_MSG_TD_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
-                            CH_KV_SINGLE(CHMPK_MSG_TD_TOTAL_SIZE, MSGPACK_OBJECT_POSITIVE_INTEGER),
-                            CH_KV_EITHER(CHMPK_MSG_TD_RESTORE_OPS, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
-                            CH_KV_EITHER(CHMPK_MSG_TD_INPUT_FUNC, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
-                            CH_KV_EITHER(CHMPK_MSG_TD_EMBEDDED, MSGPACK_OBJECT_MAP, MSGPACK_OBJECT_NIL),
-                            CH_KV_SINGLE(CHMPK_MSG_TD_OVERRIDE_COUNT, MSGPACK_OBJECT_POSITIVE_INTEGER),
-                            CH_KV_SINGLE(CHMPK_MSG_TD_TOL, MSGPACK_OBJECT_FLOAT32));
+                            CH_KV_SINGLE(CH_TD_NAME, MSGPACK_OBJECT_STR),
+                            CH_KV_SINGLE(CH_TD_TYPE, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CH_TD_FLAGS, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_EITHER(CH_TD_EXTERNAL_NAME, MSGPACK_OBJECT_STR, MSGPACK_OBJECT_NIL),
+                            CH_KV_SINGLE(CH_TD_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CH_TD_TOTAL_SIZE, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_EITHER(CH_TD_RESTORE_OPS, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
+                            CH_KV_EITHER(CH_TD_INPUT_FUNC, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
+                            CH_KV_EITHER(CH_TD_EMBEDDED, MSGPACK_OBJECT_MAP, MSGPACK_OBJECT_NIL),
+                            CH_KV_SINGLE(CH_TD_OVERRIDE_COUNT, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CH_TD_TOL, MSGPACK_OBJECT_FLOAT32));
         CH_CHECK(ch_check_kv_schema(fields.ptr[i], dm_td_schema));
     }
     return CH_UNPACK_OK;
@@ -271,7 +281,7 @@ static ch_process_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void*
 {
     ch_verify_and_hash_dm_cb_udata* udata = (ch_verify_and_hash_dm_cb_udata*)user_data;
     msgpack_object_map dm = o->via.map;
-    ch_hashmap_entry entry = {.name = dm.ptr[CH_KV_IDX_DM_NAME].val.via.str, .o = *o};
+    ch_hashmap_entry entry = {.name = dm.ptr[CH_DM_NAME].val.via.str, .o = *o};
     uint64_t hash = ch_hashmap_entry_hash(&entry, 0, 0);
     const ch_hashmap_entry* existing = hashmap_get_with_hash(udata->ctx->dm_hashmap, &entry, hash);
 
@@ -284,12 +294,12 @@ static ch_process_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void*
     }
     // I was originally going to do a deep comparison of all of the fields, but I can just compare the datamap pointers :)
     msgpack_object_map dm2 = existing->o.via.map;
-    if (msgpack_object_equal(dm.ptr[CH_KV_IDX_DM_MODULE].val, dm2.ptr[CH_KV_IDX_DM_MODULE].val) &&
-        msgpack_object_equal(dm.ptr[CH_KV_IDX_DM_MODULE_OFF].val, dm2.ptr[CH_KV_IDX_DM_MODULE_OFF].val))
+    if (msgpack_object_equal(dm.ptr[CH_DM_MODULE].val, dm2.ptr[CH_DM_MODULE].val) &&
+        msgpack_object_equal(dm.ptr[CH_DM_MODULE_OFF].val, dm2.ptr[CH_DM_MODULE_OFF].val))
         return CH_UNPACK_OK;
 
-    msgpack_object_str name = dm.ptr[CH_KV_IDX_DM_NAME].val.via.str;
-    ch_game_module mod_idx = dm.ptr[CH_KV_IDX_DM_MODULE].val.via.u64;
+    msgpack_object_str name = dm.ptr[CH_DM_NAME].val.via.str;
+    ch_game_module mod_idx = dm.ptr[CH_DM_MODULE].val.via.u64;
     CH_LOG_ERROR(udata->ctx,
                  "Two datamaps found with the same name '%.*s' (%s), but different type descriptions!",
                  name.size,
@@ -305,62 +315,63 @@ static ch_process_result ch_count_maps_cb(const msgpack_object* o, void* user_da
     return CH_UNPACK_OK;
 }
 
-typedef struct ch_map_sort_key {
-    msgpack_object_map dm;
-    uint32_t n_dependencies;
-} ch_map_sort_key;
-
-static int ch_cmp_datamaps(const ch_map_sort_key* a, const ch_map_sort_key* b)
+static int ch_cmp_datamaps(const ch_hashmap_entry** a, const ch_hashmap_entry** b)
 {
-    int cmp = ch_cmp_mp_str(a->dm.ptr[CH_KV_IDX_DM_MODULE].val.via.str, b->dm.ptr[CH_KV_IDX_DM_MODULE].val.via.str);
+    int cmp =
+        ch_cmp_mp_str((**a).o.via.map.ptr[CH_DM_MODULE].val.via.str, (**b).o.via.map.ptr[CH_DM_MODULE].val.via.str);
     if (cmp)
         return cmp;
-    if (a->n_dependencies < b->n_dependencies)
+    if ((**a).n_dependencies < (**b).n_dependencies)
         return -1;
-    if (a->n_dependencies > b->n_dependencies)
+    if ((**a).n_dependencies > (**b).n_dependencies)
         return 1;
-    return ch_cmp_mp_str(a->dm.ptr[CH_KV_IDX_DM_NAME].val.via.str, b->dm.ptr[CH_KV_IDX_DM_NAME].val.via.str);
+    return ch_cmp_mp_str((**a).o.via.map.ptr[CH_DM_NAME].val.via.str, (**b).o.via.map.ptr[CH_DM_NAME].val.via.str);
 }
 
 // change the msgpack objects which reference base/embedded sorted_maps to just strings
 static void ch_change_datamap_references_to_strings(msgpack_object_map dm)
 {
     // base map
-    if (dm.ptr[CH_KV_IDX_DM_BASE].val.type == MSGPACK_OBJECT_MAP)
-        dm.ptr[CH_KV_IDX_DM_BASE].val = dm.ptr[CH_KV_IDX_DM_BASE].val.via.map.ptr[CH_KV_IDX_DM_NAME].val;
-    //embedded sorted_maps
-    msgpack_object_array fields = dm.ptr[CH_KV_IDX_DM_FIELDS].val.via.array;
+    if (dm.ptr[CH_DM_BASE].val.type == MSGPACK_OBJECT_MAP)
+        dm.ptr[CH_DM_BASE].val = dm.ptr[CH_DM_BASE].val.via.map.ptr[CH_DM_NAME].val;
+    // embedded maps
+    msgpack_object_array fields = dm.ptr[CH_DM_FIELDS].val.via.array;
     for (size_t i = 0; i < fields.size; i++) {
         msgpack_object_map td = fields.ptr[i].via.map;
-        if (td.ptr[CH_KV_IDX_TD_EMBEDDED].val.type == MSGPACK_OBJECT_MAP)
-            td.ptr[CH_KV_IDX_TD_EMBEDDED].val = td.ptr[CH_KV_IDX_TD_EMBEDDED].val.via.map.ptr[CH_KV_IDX_DM_NAME].val;
+        if (td.ptr[CH_TD_EMBEDDED].val.type == MSGPACK_OBJECT_MAP)
+            td.ptr[CH_TD_EMBEDDED].val = td.ptr[CH_TD_EMBEDDED].val.via.map.ptr[CH_DM_NAME].val;
     }
 }
 
-static bool ch_pack_to_file(msgpack_packer* pk,
-                            const ch_map_sort_key* sorted_maps,
+static ch_process_result ch_msgpack_write_collection(msgpack_packer* pk,
+                                                     const ch_hashmap_entry** sorted_maps,
                             size_t n_sorted_maps,
-                            const ch_datamap_save_info* save_info)
+                                                     const ch_datamap_collection_info* collection_save_info)
 {
-#define CH_TRY_PACK(expr)        \
-    do {                         \
-        if (msgpack_pack_##expr) \
-            return false;        \
+#define CH_TRY_MSGPACK(expr)                  \
+    do {                                      \
+        if (msgpack_pack_##expr)              \
+            return CH_UNPACK_CONSTRAINT_FAIL; \
     } while (0)
 
-    CH_TRY_PACK(map(pk, 4));
-    CH_TRY_PACK(str_with_body(pk, CHMPK_MSG_CHICAGO_VERSION, strlen(CHMPK_MSG_CHICAGO_VERSION)));
-    CH_TRY_PACK(int(pk, CH_VERSION));
-    CH_TRY_PACK(str_with_body(pk, CHMPK_MSG_GAME_NAME, strlen(CHMPK_MSG_GAME_NAME)));
-    CH_TRY_PACK(str_with_body(pk, save_info->game_name, strlen(save_info->game_name)));
-    CH_TRY_PACK(str_with_body(pk, CHMPK_MSG_GAME_VERSION, strlen(CHMPK_MSG_GAME_VERSION)));
-    CH_TRY_PACK(str_with_body(pk, save_info->game_version, strlen(save_info->game_version)));
-    CH_TRY_PACK(str_with_body(pk, CHMPK_MSG_DATAMAPS, strlen(CHMPK_MSG_DATAMAPS)));
-    CH_TRY_PACK(array(pk, n_sorted_maps));
+    CH_TRY_MSGPACK(map(pk, 4));
+    CH_TRY_MSGPACK(str_with_body(pk, CH_HEADER_VERSION_key, strlen(CH_HEADER_VERSION_key)));
+    CH_TRY_MSGPACK(int(pk, CH_MSGPACK_FORMAT_VERSION));
+    CH_TRY_MSGPACK(str_with_body(pk, CH_HEADER_GAME_NAME_key, strlen(CH_HEADER_GAME_NAME_key)));
+    CH_TRY_MSGPACK(str_with_body(pk, collection_save_info->game_name, strlen(collection_save_info->game_name)));
+    CH_TRY_MSGPACK(str_with_body(pk, CH_HEADER_GAME_VERSION_key, strlen(CH_HEADER_GAME_VERSION_key)));
+    CH_TRY_MSGPACK(str_with_body(pk, collection_save_info->game_version, strlen(collection_save_info->game_version)));
+    CH_TRY_MSGPACK(str_with_body(pk, CH_HEADER_DATAMAPS_key, strlen(CH_HEADER_DATAMAPS_key)));
+    CH_TRY_MSGPACK(array(pk, n_sorted_maps));
     for (size_t i = 0; i < n_sorted_maps; i++) {
-        ch_change_datamap_references_to_strings(sorted_maps[i].dm);
-        msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = sorted_maps[i].dm};
-        CH_TRY_PACK(object(pk, o));
+        ch_change_datamap_references_to_strings(sorted_maps[i]->o.via.map);
+        msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = sorted_maps[i]->o.via.map};
+        CH_TRY_MSGPACK(object(pk, o));
+    }
+    return CH_UNPACK_OK;
+
+#undef CH_TRY_MSGPACK
+}
     }
     return true;
 }
@@ -374,18 +385,17 @@ static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
         return CH_UNPACK_CONSTRAINT_FAIL;
     }
 
-    ch_map_sort_key* sorted_maps = malloc(n_datamaps * sizeof(ch_map_sort_key));
+    ch_hashmap_entry** sorted_maps = malloc(n_datamaps * sizeof(ch_hashmap_entry*));
+
     if (!sorted_maps)
         return CH_UNPACK_OUT_OF_MEMORY;
 
     size_t map_idx = 0;
     size_t it = 0;
-    ch_hashmap_entry* entry = NULL;
-    while (hashmap_iter(ctx->dm_hashmap, &it, &entry)) {
-        sorted_maps[map_idx].dm = entry->o.via.map;
-        sorted_maps[map_idx].n_dependencies = 0;
-        ch_recurse_visit_datamaps(entry->o, ch_count_maps_cb, &sorted_maps[map_idx].n_dependencies);
-        map_idx++;
+    while (hashmap_iter(ctx->dm_hashmap, &it, &sorted_maps[map_idx])) {
+        sorted_maps[map_idx]->n_dependencies = 0;
+        ch_recurse_visit_datamaps(sorted_maps[map_idx]->o, ch_count_maps_cb, &sorted_maps[map_idx]->n_dependencies);
+        sorted_maps[map_idx]->offset = map_idx++;
     }
 
     /*
@@ -395,27 +405,44 @@ static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
     */
     qsort(sorted_maps, n_datamaps, sizeof *sorted_maps, ch_cmp_datamaps);
 
-    FILE* f = fopen(ctx->save_info->output_file_path, "wb");
+    ch_process_result result = CH_UNPACK_OK;
+
+    switch (ctx->collection_save_info->output_type) {
+        case CH_DC_STRUCT_MSGPACK:
+            FILE* f = fopen(ctx->collection_save_info->output_file_path, "wb");
     if (!f) {
-        CH_LOG_ERROR(ctx, "Failed to write to file '%s', (errno=%d)", ctx->save_info->output_file_path, errno);
+                CH_LOG_ERROR(ctx,
+                             "Failed to write to file '%s', (errno=%d)",
+                             ctx->collection_save_info->output_file_path,
+                             errno);
         return CH_UNPACK_CONSTRAINT_FAIL;
     }
-    CH_LOG_INFO(ctx, "Writing %zu datamaps to '%s'.\n", n_datamaps, ctx->save_info->output_file_path);
+            CH_LOG_INFO(ctx,
+                        "Writing %zu datamaps to '%s'.\n",
+                        n_datamaps,
+                        ctx->collection_save_info->output_file_path);
     msgpack_packer packer = {.data = f, .callback = msgpack_fbuffer_write};
-    bool ok = ch_pack_to_file(&packer, sorted_maps, n_datamaps, ctx->save_info);
-    if (!ok)
+            result = ch_msgpack_write_collection(&packer, sorted_maps, n_datamaps, ctx->collection_save_info);
+            if (result != CH_UNPACK_OK)
         CH_LOG_ERROR(ctx, "Failed writing datamaps (errno=%d).", errno);
+            fclose(f);
+            break;
+        case CH_DC_STRUCT_NAKED:
+        case CH_DC_ARCHIVE_NAKED:
+        default:
+            assert(0);
+    }
+
     free(sorted_maps);
-    fclose(f);
-    return ok ? CH_UNPACK_OK : CH_UNPACK_CONSTRAINT_FAIL;
+    return result;
 }
 
 // process the msgpack object sent by the payload
 static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, msgpack_object o, bool* save_unpacked)
 {
     CH_DEFINE_KV_SCHEMA(msg_kv_schema,
-                        CH_KV_SINGLE(CHMPK_MSG_TYPE, MSGPACK_OBJECT_POSITIVE_INTEGER),
-                        CH_KV_WILD(CHMPK_MSG_DATA));
+                        CH_KV_SINGLE(CH_IPC_TYPE, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                        CH_KV_WILD(CH_IPC_DATA));
     CH_CHECK(ch_check_kv_schema(o, msg_kv_schema));
 
     const msgpack_object_kv* kv = o.via.map.ptr;
@@ -450,10 +477,10 @@ static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, ms
             CH_CHECK(ch_recurse_visit_datamaps(msg_data, ch_verify_and_hash_dm_cb, &udata));
             CH_LOG_INFO(ctx,
                         "Received datamap %.*s from %.*s.\n",
-                        msg_data.via.map.ptr[CH_KV_IDX_DM_NAME].val.via.str.size,
-                        msg_data.via.map.ptr[CH_KV_IDX_DM_NAME].val.via.str.ptr,
-                        msg_data.via.map.ptr[CH_KV_IDX_DM_MODULE].val.via.str.size,
-                        msg_data.via.map.ptr[CH_KV_IDX_DM_MODULE].val.via.str.ptr);
+                        msg_data.via.map.ptr[CH_DM_NAME].val.via.str.size,
+                        msg_data.via.map.ptr[CH_DM_NAME].val.via.str.ptr,
+                        msg_data.via.map.ptr[CH_DM_MODULE].val.via.str.size,
+                        msg_data.via.map.ptr[CH_DM_MODULE].val.via.str.ptr);
             return CH_UNPACK_OK;
             break;
         case CH_MSG_LINKED_NAME:
