@@ -65,26 +65,54 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     if (br_after_fields.overflowed) {
         err = CH_ERR_READER_OVERFLOWED;
     } else {
-        // TODO : READ THE GLOBAL FIELDS HERE
-        // TODO : handle datamap not found
-        ch_datamap_lookup_entry entry_in = {.name = "GAME_HEADER"};
-        const ch_datamap_lookup_entry* entry_out = hashmap_get(ctx->info->datamap_collection->lookup, &entry_in);
-        ch_parsed_fields parsed_fields;
-        err = ch_br_read_save_fields(ctx, "GameHeader", entry_out->datamap, &parsed_fields);
+        const ch_datamap* dm_game_header;
+        const ch_datamap* dm_global_state;
+        err = ch_lookup_datamap(ctx, "GAME_HEADER", &dm_game_header);
+        if (err)
+            return err;
+        err = ch_br_read_save_fields(ctx, "GameHeader", dm_game_header, &ctx->data->game_header);
+        if (err)
+            return err;
+        err = ch_lookup_datamap(ctx, "CGlobalState", &dm_global_state);
+        if (err)
+            return err;
+        err = ch_br_read_save_fields(ctx, "GLOBAL", dm_global_state, &ctx->data->global_state);
+        if (err)
+            return err;
     }
     *br = br_after_fields;
     ch_free_symbol_table(&ctx->st);
     if (err)
         return err;
 
-    // read state files
+    // determine number of state files
 
-    // TODO put these in a single array
-    int n_state_files = ch_br_read_32(br);
+    int n_state_files = 0;
+
+    // TODO this probably should be streamlined, it's extremely verbose
+
+    // set the number of state files from the game header
+    ch_parsed_fields* pf_game_header = &ctx->data->game_header;
+    for (size_t i = 0; i < pf_game_header->n_packed_fields; i++) {
+        ch_parsed_field_info* pf_info = &pf_game_header->packed_info[i];
+        if (!strcmp(pf_game_header->map->fields[pf_info->field_idx].name, "mapCount")) {
+            n_state_files = *(int*)(pf_game_header->packed_data + pf_info->data_off);
+            break;
+        }
+    }
+
+    // newer implementation stores the number of state files explicitly after the header, see CSaveRestore::SaveGameSlot
+    if (n_state_files == 0)
+        n_state_files = ch_br_read_32(br);
+
     if (br->overflowed)
         return CH_ERR_READER_OVERFLOWED;
     if (n_state_files < 0)
         return CC_ERR_BAD_STATE_FILE_COUNT;
+
+    // read state files
+
+    // TODO put these in a single array
 
     ch_state_file** sf = &ctx->data->state_files;
     for (int i = 0; i < n_state_files && !err; i++) {

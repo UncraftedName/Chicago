@@ -23,6 +23,7 @@
     GEN(CH_ERR_READER_OVERFLOWED)     \
     GEN(CH_ERR_WRITER_OVERFLOWED)     \
     GEN(CH_ERR_BAD_SYMBOL_TABLE)      \
+    GEN(CH_ERR_DATAMAP_NOT_FOUND)     \
                                       \
     /* .sav header errors */          \
     GEN(CH_ERR_SAV_BAD_TAG)           \
@@ -76,7 +77,7 @@ typedef struct ch_parsed_fields {
     const ch_datamap* map;
     unsigned char* packed_data;
     ch_parsed_field_info* packed_info;
-    int n_packed_fields;
+    size_t n_packed_fields;
 } ch_parsed_fields;
 
 typedef struct ch_sf_save_data {
@@ -138,6 +139,8 @@ typedef struct ch_parse_info {
 typedef struct ch_parsed_save_data {
     ch_tag tag;
     ch_state_file* state_files;
+    ch_parsed_fields game_header;
+    ch_parsed_fields global_state;
 } ch_parsed_save_data;
 
 ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info* info);
