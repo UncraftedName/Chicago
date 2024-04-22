@@ -1,5 +1,4 @@
 #include "ch_save_internal.h"
-#include "SDK/built_in_descs.h"
 
 typedef struct ch_hl1_sections {
     int32_t symbol_table_size_bytes;

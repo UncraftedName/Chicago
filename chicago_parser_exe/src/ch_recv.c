@@ -462,8 +462,7 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
     ch_datamap_collection_tag* ch_tag = (ch_datamap_collection_tag*)(string_buf + string_alloc_size);
 
     // fill collection
-    ch_col->maps = NULL;
-    ch_col->n_maps = n_sorted_maps;
+    ch_col->lookup = NULL;
 
     // fill strings
     ch_hashmap_entry* entry = NULL;
@@ -490,7 +489,7 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
         ch_dm->n_fields = mp_tds.size;
         ch_dm->fields_rel_off = ch_dm->n_fields == 0 ? CH_REL_OFF_NULL : ch_td - ch_tds;
         for (size_t j = 0; j < mp_tds.size; j++) {
-            msgpack_object_kv* td_kv = mp_tds.ptr->via.map.ptr;
+            msgpack_object_kv* td_kv = mp_tds.ptr[j].via.map.ptr;
             ch_td->type = td_kv[CH_TD_TYPE].val.via.u64;
             ch_td->name_rel_off = ch_get_entry_offset(hm_unique_strs, td_kv[CH_TD_NAME].val);
             ch_td->external_name_rel_off = ch_get_entry_offset(hm_unique_strs, td_kv[CH_TD_EXTERNAL_NAME].val);
@@ -510,11 +509,12 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
     assert((void*)ch_td == (void*)string_buf);
 
     // fill tag
+    ch_tag->n_datamaps = n_sorted_maps;
     ch_tag->datamaps_start = (size_t)ch_dms - (size_t)collection_out->arr;
     ch_tag->typedescs_start = (size_t)ch_tds - (size_t)collection_out->arr;
     ch_tag->strings_start = (size_t)string_buf - (size_t)collection_out->arr;
     ch_tag->version = CH_DATAMAP_STRUCT_VERSION;
-    strncpy(ch_tag->magic, CH_COLLECTION_MAGIC, sizeof ch_tag->magic);
+    strncpy(ch_tag->magic, CH_COLLECTION_FILE_MAGIC, sizeof ch_tag->magic);
 
 end:
     hashmap_free(hm_unique_strs);

@@ -93,12 +93,12 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
     ch_datamap_collection_tag* tag =
         (ch_datamap_collection_tag*)(bytes.arr + bytes.len - sizeof(ch_datamap_collection_tag));
 
-    if (strncmp(tag->magic, CH_COLLECTION_MAGIC, sizeof tag->magic))
+    if (strncmp(tag->magic, CH_COLLECTION_FILE_MAGIC, sizeof tag->magic))
         return CH_ARCH_INVALID_COLLECTION;
-    if (tag->version != CH_DATAMAP_STRUCT_VERSION || col->n_maps == 0)
+    if (tag->version != CH_DATAMAP_STRUCT_VERSION || tag->n_datamaps == 0)
         return CH_ARCH_INVALID_COLLECTION_VERSION;
 
-#define CH_CHECK_PTR(p)                                                    \
+#define CH_CHECK_PTR(p)                                                        \
     if ((char*)(p) <= (char*)bytes.arr || (char*)(p) >= bytes.arr + bytes.len) \
     return CH_ARCH_INVALID_COLLECTION
 
@@ -106,7 +106,6 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
     ch_type_description* tds = (ch_type_description*)(bytes.arr + tag->typedescs_start);
     const char* strings = bytes.arr + tag->strings_start;
 
-    col->maps = dms;
     CH_CHECK_PTR(dms);
     CH_CHECK_PTR(tds);
     CH_CHECK_PTR(strings);
@@ -122,7 +121,7 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
         }                                          \
     } while (0)
 
-    for (size_t i = 0; i < col->n_maps; i++) {
+    for (size_t i = 0; i < tag->n_datamaps; i++) {
         ch_datamap* dm = &dms[i];
         CH_FIXUP(dm->base_map, dms);
         CH_FIXUP(dm->class_name, strings);
@@ -131,7 +130,7 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
         if (!!dm->fields ^ !!dm->n_fields)
             return CH_ARCH_INVALID_COLLECTION;
         for (size_t j = 0; j < dm->n_fields; j++) {
-            ch_type_description* td = (ch_type_description*)&dm->fields[j]; // const cast
+            ch_type_description* td = (ch_type_description*)&dm->fields[j]; // cast away const
             CH_FIXUP(td->name, strings);
             CH_FIXUP(td->external_name, strings);
             CH_FIXUP(td->embedded_map, dms);
@@ -140,6 +139,21 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
 
 #undef CH_FIXUP
 #undef CH_CHECK_PTR
+
+    // TODO move to a different function & handle OOM
+
+    col->lookup = hashmap_new(sizeof(ch_datamap_lookup_entry),
+                              tag->n_datamaps,
+                              0,
+                              0,
+                              ch_datamap_collection_name_hash,
+                              ch_datamap_collection_name_compare,
+                              NULL,
+                              NULL);
+    for (size_t i = 0; i < tag->n_datamaps; i++) {
+        ch_datamap_lookup_entry entry = {.name = dms[i].class_name, .datamap = &dms[i]};
+        hashmap_set(col->lookup, &entry);
+    }
 
     return CH_ARCH_OK;
 }

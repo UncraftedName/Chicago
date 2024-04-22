@@ -162,7 +162,7 @@ typedef struct ch_save_restore_ops {
     }
 
 // update whenever changes are made to ch_type_description or ch_datamap
-#define CH_DATAMAP_STRUCT_VERSION 1
+#define CH_DATAMAP_STRUCT_VERSION 2
 
 #define CH_REL_OFF_NULL SIZE_MAX
 

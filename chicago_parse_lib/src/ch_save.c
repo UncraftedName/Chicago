@@ -2,44 +2,19 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "SDK/built_in_descs.h"
 #include "ch_field_reader.h"
 #include "ch_save_internal.h"
 
-ch_err ch_parse_save_path(ch_parsed_save_data* parsed_data, const char* file_path)
-{
-    FILE* f = fopen(file_path, "rb");
-    if (!f)
-        return CH_ERR_FAILED_TO_READ_FILE;
-    if (fseek(f, 0, SEEK_END))
-        return CH_ERR_FAILED_TO_READ_FILE;
-    long int size = ftell(f);
-    if (size == -1L)
-        return CH_ERR_FAILED_TO_READ_FILE;
-    rewind(f);
-    void* bytes = malloc(size);
-    if (!bytes)
-        return CH_ERR_OUT_OF_MEMORY;
-    if (fread(bytes, 1, size, f) != (size_t)size) {
-        free(bytes);
-        fclose(f);
-        return CH_ERR_FAILED_TO_READ_FILE;
-    }
-    fclose(f);
-    ch_err ret = ch_parse_save_bytes(parsed_data, bytes, size);
-    free(bytes);
-    return ret;
-}
-
-ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, void* bytes, size_t n_bytes)
+ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info* info)
 {
     memset(parsed_data, 0, sizeof *parsed_data);
     ch_parsed_save_ctx ctx = {
+        .info = info,
         .data = parsed_data,
         .br =
             {
-                .cur = bytes,
-                .end = (unsigned char*)bytes + n_bytes,
+                .cur = info->bytes,
+                .end = (unsigned char*)info->bytes + info->n_bytes,
                 .overflowed = false,
             },
     };
@@ -91,8 +66,11 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
         err = CH_ERR_READER_OVERFLOWED;
     } else {
         // TODO : READ THE GLOBAL FIELDS HERE
+        // TODO : handle datamap not found
+        ch_datamap_lookup_entry entry_in = {.name = "GAME_HEADER"};
+        const ch_datamap_lookup_entry* entry_out = hashmap_get(ctx->info->datamap_collection->lookup, &entry_in);
         ch_parsed_fields parsed_fields;
-        err = ch_br_read_save_fields(ctx, "GameHeader", &game_header_map, &parsed_fields);
+        err = ch_br_read_save_fields(ctx, "GameHeader", entry_out->datamap, &parsed_fields);
     }
     *br = br_after_fields;
     ch_free_symbol_table(&ctx->st);

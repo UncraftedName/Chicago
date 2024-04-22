@@ -13,6 +13,7 @@ typedef struct ch_symbol_table {
 
 // a wrapper of the parsed data with some additional context
 typedef struct ch_parsed_save_ctx {
+    const ch_parse_info* info;
     ch_parsed_save_data* data;
     ch_byte_reader br;
     ch_symbol_table st;

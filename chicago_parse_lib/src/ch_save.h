@@ -2,8 +2,13 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <assert.h>
+#include <string.h>
 
 #include "SDK/datamap.h"
+#include "thirdparty/hashmap/hashmap.h"
+
+#define CH_SAVE_FILE_MAX_SIZE (1024 * 1024 * 32)
 
 #define CH_GENERATE_ENUM(v) v,
 #define CH_GENERATE_STRING(v) #v,
@@ -98,22 +103,42 @@ typedef struct ch_state_file {
     };
 } ch_state_file;
 
+typedef struct ch_datamap_lookup_entry {
+    const char* name;
+    const ch_datamap* datamap;
+} ch_datamap_lookup_entry;
+
+static int ch_datamap_collection_name_compare(const void* a, const void* b, void* udata)
+{
+    (void)udata;
+    const ch_datamap_lookup_entry* ea = (const ch_datamap_lookup_entry*)a;
+    const ch_datamap_lookup_entry* eb = (const ch_datamap_lookup_entry*)b;
+    assert(ea->name && eb->name);
+    return strcmp(ea->name, eb->name);
+}
+
+static uint64_t ch_datamap_collection_name_hash(const void* key, uint64_t seed0, uint64_t seed1)
+{
+    assert(*(char**)key);
+    const ch_datamap_lookup_entry* e = (const ch_datamap_lookup_entry*)key;
+    return hashmap_xxhash3(e->name, strlen(e->name), seed0, seed1);
+}
+
 typedef struct ch_datamap_collection {
-    const ch_datamap* maps;
-    size_t n_maps;
+    // const char* name -> ch_datamap, see the hash & compare functions above
+    struct hashmap* lookup;
 } ch_datamap_collection;
 
-typedef struct ch_parse_params {
-    ch_datamap_collection* collections;
-    size_t n_collections;
-} ch_parse_params;
+typedef struct ch_parse_info {
+    ch_datamap_collection* datamap_collection;
+    void* bytes;
+    size_t n_bytes;
+} ch_parse_info;
 
 typedef struct ch_parsed_save_data {
-    // char game_id[32];
     ch_tag tag;
     ch_state_file* state_files;
 } ch_parsed_save_data;
 
-ch_err ch_parse_save_path(ch_parsed_save_data* parsed_data, const char* file_path);
-ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, void* bytes, size_t n_bytes);
+ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info* info);
 void ch_free_parsed_save_data(ch_parsed_save_data* parsed_data);

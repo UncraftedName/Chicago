@@ -10,6 +10,7 @@
 
 #define CH_MAX_GAME_NAME_SIZE 32
 
+// TODO move to shared file
 typedef struct ch_byte_array {
     char* arr;
     size_t len;
@@ -36,7 +37,7 @@ typedef enum ch_archive_result {
 } ch_archive_result;
 
 #define CH_COLLECTION_FILE_MAX_SIZE (1024 * 1024 * 32)
-#define CH_COLLECTION_MAGIC "chicago"
+#define CH_COLLECTION_FILE_MAGIC "chicago"
 
 /*
 * This tag is put at the end of the file so that we can allocate one big bungus buffer
@@ -48,13 +49,14 @@ typedef enum ch_archive_result {
 * tag is valid.
 */
 typedef struct ch_datamap_collection_tag {
+    size_t n_datamaps;
     // absolute offsets from file start
     size_t datamaps_start;
     size_t typedescs_start;
     size_t strings_start;
     // keep these guys at the end across all versions
     size_t version; // CH_DATAMAP_STRUCT_VERSION
-    char magic[8];  // CH_COLLECTION_MAGIC
+    char magic[8];  // CH_COLLECTION_FILE_MAGIC
 } ch_datamap_collection_tag;
 
 // returns a fail reason or NULL on success
