@@ -23,7 +23,7 @@ int ch_msg_preamble(ch_send_ctx* ctx, ch_comm_msg_type type)
 {
     msgpack_sbuffer_clear(&ctx->mp_buf);
     msgpack_packer* pk = &ctx->mp_pk;
-    CH_CHK_MP_PACK(map(pk, 2));
+    CH_CHK_MP_PACK(map(pk, CH_KEY_GROUP_COUNT(KEYS_IPC_HEADER)));
     CH_CHK_MP_PACK_CSTR(pk, CH_IPC_TYPE_key);
     CH_CHK_MP_PACK(int(pk, type));
     CH_CHK_MP_PACK_CSTR(pk, CH_IPC_DATA_key);
@@ -72,7 +72,7 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_udata* info, const datamap_t* d
     msgpack_packer* pk = &info->send_ctx->mp_pk;
     if (!dm)
         return msgpack_pack_nil(pk);
-    CH_CHK_MP_PACK(map(pk, 5));
+    CH_CHK_MP_PACK(map(pk, CH_KEY_GROUP_COUNT(KEYS_DM)));
     CH_CHK_MP_PACK_CSTR(pk, CH_DM_NAME_key);
     CH_CHK_MP_PACK_CSTR(pk, dm->dataClassName);
     CH_CHK_MP_PACK_CSTR(pk, CH_DM_MODULE_key);
@@ -90,7 +90,7 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_udata* info, const datamap_t* d
     } else {
         CH_CHK_MP_PACK(array(pk, dm->dataNumFields));
         for (int i = 0; i < dm->dataNumFields; i++) {
-            CH_CHK_MP_PACK(map(pk, 11));
+            CH_CHK_MP_PACK(map(pk, CH_KEY_GROUP_COUNT(KEYS_TD)));
             const typedescription_t* desc = &dm->dataDesc[i];
             CH_CHK_MP_PACK_CSTR(pk, CH_TD_NAME_key);
             CH_CHK_MP_PACK_CSTR(pk, desc->fieldName);
@@ -105,6 +105,8 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_udata* info, const datamap_t* d
                 CH_CHK_MP_PACK(nil(pk));
             CH_CHK_MP_PACK_CSTR(pk, CH_TD_OFF_key);
             CH_CHK_MP_PACK(int(pk, desc->fieldOffset[0]));
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_FIELD_SIZE_key);
+            CH_CHK_MP_PACK(int(pk, desc->fieldSize));
             CH_CHK_MP_PACK_CSTR(pk, CH_TD_TOTAL_SIZE_key);
             CH_CHK_MP_PACK(int(pk, desc->fieldSizeInBytes));
             CH_CHK_MP_PACK_CSTR(pk, CH_TD_RESTORE_OPS_key);

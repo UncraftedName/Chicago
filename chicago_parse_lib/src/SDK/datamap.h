@@ -153,44 +153,37 @@ typedef struct ch_save_restore_ops {
     int x;
 } ch_save_restore_ops;
 
-// this is a basically the same as the game's typedescription_t
-typedef struct ch_type_description {
-    ch_field_type type;
-    const char* name;
-    int off;
-    unsigned short n_elems;
-    short flags;
+// when written to file, structures will be saved relative to some point in the file;
+// when loaded they'll be fixed up to just be the raw pointers
+#define CH_PACKED_PTR(ptr_type, name) \
+    union {                           \
+        ptr_type name;                \
+        size_t name##_rel_off;        \
+    }
 
-    // TODO what the hell is this?
-    // the name of the variable in the map/fgd data, or the name of the action
-    // const char* external_name;
+// update whenever changes are made to ch_type_description or ch_datamap
+#define CH_DATAMAP_STRUCT_VERSION 1
 
-    ch_save_restore_ops* save_restore_ops;
-
-    // TODO - what the hell is this?
-    // for associating function with string names
-    // void* inputFunc;
-
-    const struct ch_datamap* embedded_map;
-    int field_size_bytes;
-
-    // TODO what the hell is this?
-    // FTYPEDESC_OVERRIDE point to first baseclass instance if chains_validated has occurred
-    // struct ch_type_description* override_field;
-
-    // TODO is this needed?
-    // Used to track exclusion of baseclass fields
-    int override_count;
-
-    float float_tol;
-} ch_type_description;
+#define CH_REL_OFF_NULL SIZE_MAX
 
 // a slightly modified version of the game's datamap_t
 typedef struct ch_datamap {
-    const ch_type_description* data_desc;
-    const char* module_name;
-    uintptr_t module_off;
-    int n_fields;
-    char const* class_name;
-    const struct ch_datamap* base_map;
+    CH_PACKED_PTR(const char*, class_name);
+    CH_PACKED_PTR(const struct ch_datamap*, base_map);
+    CH_PACKED_PTR(const struct ch_type_description*, fields);
+    size_t n_fields;
+    // necessary to keep this to uniquely determine restore ops (in case of collisions across modules)
+    CH_PACKED_PTR(const char*, module_name);
 } ch_datamap;
+
+// a slightly modified version of the game's typedescription_t
+typedef struct ch_type_description {
+    ch_field_type type;
+    unsigned short flags;
+    char _pad[2];
+    CH_PACKED_PTR(const char*, name);
+    CH_PACKED_PTR(const char*, external_name);
+    size_t off;
+    CH_PACKED_PTR(const struct ch_save_restore_ops*, save_restore_ops);
+    CH_PACKED_PTR(const struct ch_datamap*, embedded_map);
+} ch_type_description;

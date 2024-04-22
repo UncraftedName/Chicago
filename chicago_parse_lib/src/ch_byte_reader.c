@@ -100,10 +100,10 @@ ch_err ch_br_read_save_fields(ch_parsed_save_ctx* ctx,
         ch_parsed_field_info* info = &fields_out->packed_info[i];
         info->data_off = num_field_buf_bytes;
         const ch_type_description* field = NULL;
-        int n_tests = 0;
+        size_t n_tests = 0;
         for (; n_tests < map->n_fields; n_tests++) {
             info->field_idx = cookie++ % map->n_fields;
-            field = &map->data_desc[info->field_idx];
+            field = &map->fields[info->field_idx];
             if (!_stricmp(field->name, block.symbol))
                 break;
         }
@@ -138,7 +138,7 @@ ch_err ch_br_read_save_fields(ch_parsed_save_ctx* ctx,
 
     for (int i = 0; i < n_fields; i++) {
         ch_parsed_field_info* field_info = &fields_out->packed_info[i];
-        const ch_type_description* field = &map->data_desc[field_info->field_idx];
+        const ch_type_description* field = &map->fields[field_info->field_idx];
         short block_size_bytes = ch_br_read_16_unchecked(&br_before_fields);
         ch_br_skip_unchecked(&br_before_fields, 2);
         if (field->type == FIELD_CUSTOM) {

@@ -150,22 +150,22 @@ void ch_msg_ctx_buf_consumed(ch_process_msg_ctx* ctx, size_t n)
 
 typedef enum ch_process_result {
     // all is well
-    CH_UNPACK_OK,
+    CH_PROCESS_OK,
     // got goodbye, we can stop now
-    CH_UNPACK_EXIT,
+    CH_PROCESS_FINISHED,
     // callee reports error
-    CH_UNPACK_CONSTRAINT_FAIL,
+    CH_PROCESS_ERROR,
     // caller reports error
-    CH_UNPACK_OUT_OF_MEMORY,
-    CH_UNPACK_WRONG_FORMAT,
+    CH_PROCESS_OUT_OF_MEMORY,
+    CH_PROCESS_BAD_FORMAT,
 } ch_process_result;
 
-#define CH_CHECK_FORMAT(cond)              \
-    do {                                   \
-        if (!(cond)) {                     \
-            assert(0);                     \
-            return CH_UNPACK_WRONG_FORMAT; \
-        }                                  \
+#define CH_CHECK_FORMAT(cond)             \
+    do {                                  \
+        if (!(cond)) {                    \
+            assert(0);                    \
+            return CH_PROCESS_BAD_FORMAT; \
+        }                                 \
     } while (0)
 
 #define CH_CHECK_STR_FORMAT(mp_str_obj, comp_str)                                                   \
@@ -204,7 +204,7 @@ typedef struct ch_kv_schema {
 #define CH_CHECK(expr)                \
     do {                              \
         ch_process_result res = expr; \
-        if (res != CH_UNPACK_OK)      \
+        if (res != CH_PROCESS_OK)     \
             return res;               \
     } while (0)
 
@@ -222,7 +222,7 @@ ch_process_result ch_check_kv_schema(msgpack_object o, ch_kv_schema schema)
             CH_CHECK_FORMAT(any);
         }
     }
-    return CH_UNPACK_OK;
+    return CH_PROCESS_OK;
 }
 
 // visit this datamap and base/embedded sorted_maps
@@ -231,13 +231,13 @@ static ch_process_result ch_recurse_visit_datamaps(const msgpack_object o,
                                                    void* user_data)
 {
     if (o.type == MSGPACK_OBJECT_NIL)
-        return CH_UNPACK_OK;
+        return CH_PROCESS_OK;
     CH_CHECK(cb(&o, user_data));
     CH_CHECK(ch_recurse_visit_datamaps(o.via.map.ptr[CH_DM_BASE].val, cb, user_data));
     msgpack_object_array fields = o.via.map.ptr[CH_DM_FIELDS].val.via.array;
     for (size_t i = 0; i < fields.size; i++)
         CH_CHECK(ch_recurse_visit_datamaps(fields.ptr[i].via.map.ptr[CH_TD_EMBEDDED].val, cb, user_data));
-    return CH_UNPACK_OK;
+    return CH_PROCESS_OK;
 }
 
 static ch_process_result ch_check_dm_schema_cb(const msgpack_object* o, void* user_data)
@@ -260,6 +260,7 @@ static ch_process_result ch_check_dm_schema_cb(const msgpack_object* o, void* us
                             CH_KV_SINGLE(CH_TD_FLAGS, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_EITHER(CH_TD_EXTERNAL_NAME, MSGPACK_OBJECT_STR, MSGPACK_OBJECT_NIL),
                             CH_KV_SINGLE(CH_TD_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CH_TD_FIELD_SIZE, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_SINGLE(CH_TD_TOTAL_SIZE, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_EITHER(CH_TD_RESTORE_OPS, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
                             CH_KV_EITHER(CH_TD_INPUT_FUNC, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
@@ -268,7 +269,7 @@ static ch_process_result ch_check_dm_schema_cb(const msgpack_object* o, void* us
                             CH_KV_SINGLE(CH_TD_TOL, MSGPACK_OBJECT_FLOAT32));
         CH_CHECK(ch_check_kv_schema(fields.ptr[i], dm_td_schema));
     }
-    return CH_UNPACK_OK;
+    return CH_PROCESS_OK;
 }
 
 typedef struct ch_verify_and_hash_dm_cb_udata {
@@ -288,15 +289,15 @@ static ch_process_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void*
     if (!existing) {
         hashmap_set_with_hash(udata->ctx->dm_hashmap, &entry, hash);
         if (hashmap_oom(udata->ctx->dm_hashmap))
-            return CH_UNPACK_OUT_OF_MEMORY;
+            return CH_PROCESS_OUT_OF_MEMORY;
         *udata->save_unpacked = true;
-        return CH_UNPACK_OK;
+        return CH_PROCESS_OK;
     }
     // I was originally going to do a deep comparison of all of the fields, but I can just compare the datamap pointers :)
     msgpack_object_map dm2 = existing->o.via.map;
     if (msgpack_object_equal(dm.ptr[CH_DM_MODULE].val, dm2.ptr[CH_DM_MODULE].val) &&
         msgpack_object_equal(dm.ptr[CH_DM_MODULE_OFF].val, dm2.ptr[CH_DM_MODULE_OFF].val))
-        return CH_UNPACK_OK;
+        return CH_PROCESS_OK;
 
     msgpack_object_str name = dm.ptr[CH_DM_NAME].val.via.str;
     ch_game_module mod_idx = dm.ptr[CH_DM_MODULE].val.via.u64;
@@ -305,14 +306,14 @@ static ch_process_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void*
                  name.size,
                  name.ptr,
                  ch_mod_names[mod_idx]);
-    return CH_UNPACK_CONSTRAINT_FAIL;
+    return CH_PROCESS_ERROR;
 }
 
 static ch_process_result ch_count_maps_cb(const msgpack_object* o, void* user_data)
 {
     (void)o;
     ++*(uint32_t*)user_data;
-    return CH_UNPACK_OK;
+    return CH_PROCESS_OK;
 }
 
 static int ch_cmp_datamaps(const ch_hashmap_entry** a, const ch_hashmap_entry** b)
@@ -345,16 +346,16 @@ static void ch_change_datamap_references_to_strings(msgpack_object_map dm)
 
 static ch_process_result ch_msgpack_write_collection(msgpack_packer* pk,
                                                      const ch_hashmap_entry** sorted_maps,
-                            size_t n_sorted_maps,
+                                                     size_t n_sorted_maps,
                                                      const ch_datamap_collection_info* collection_save_info)
 {
-#define CH_TRY_MSGPACK(expr)                  \
-    do {                                      \
-        if (msgpack_pack_##expr)              \
-            return CH_UNPACK_CONSTRAINT_FAIL; \
+#define CH_TRY_MSGPACK(expr)         \
+    do {                             \
+        if (msgpack_pack_##expr)     \
+            return CH_PROCESS_ERROR; \
     } while (0)
 
-    CH_TRY_MSGPACK(map(pk, 4));
+    CH_TRY_MSGPACK(map(pk, CH_KEY_GROUP_COUNT(KEYS_FILE_HEADER)));
     CH_TRY_MSGPACK(str_with_body(pk, CH_HEADER_VERSION_key, strlen(CH_HEADER_VERSION_key)));
     CH_TRY_MSGPACK(int(pk, CH_MSGPACK_FORMAT_VERSION));
     CH_TRY_MSGPACK(str_with_body(pk, CH_HEADER_GAME_NAME_key, strlen(CH_HEADER_GAME_NAME_key)));
@@ -368,12 +369,156 @@ static ch_process_result ch_msgpack_write_collection(msgpack_packer* pk,
         msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = sorted_maps[i]->o.via.map};
         CH_TRY_MSGPACK(object(pk, o));
     }
-    return CH_UNPACK_OK;
+    return CH_PROCESS_OK;
 
 #undef CH_TRY_MSGPACK
 }
+
+static ch_process_result ch_add_strings_to_map(struct hashmap* str_map,
+                                               msgpack_object* strs,
+                                               size_t n_strs,
+                                               size_t* string_alloc_size)
+{
+    for (size_t i = 0; i < n_strs; i++) {
+        if (strs[i].type == MSGPACK_OBJECT_NIL)
+            continue;
+        assert(strs[i].type == MSGPACK_OBJECT_STR);
+        ch_hashmap_entry entry = {.name = strs[i].via.str, .offset = *string_alloc_size};
+        uint64_t hash = ch_hashmap_entry_hash(&entry, 0, 0);
+        if (!hashmap_get_with_hash(str_map, &entry, hash)) {
+            hashmap_set_with_hash(str_map, &entry, hash);
+            *string_alloc_size += entry.name.size + 1;
+            if (hashmap_oom(str_map))
+                return CH_PROCESS_OUT_OF_MEMORY;
+        }
     }
-    return true;
+    return CH_PROCESS_OK;
+}
+
+static size_t ch_get_entry_offset(struct hashmap* map, msgpack_object mp_str)
+{
+    if (mp_str.type == MSGPACK_OBJECT_NIL)
+        return CH_REL_OFF_NULL;
+    assert(mp_str.type == MSGPACK_OBJECT_STR);
+    ch_hashmap_entry entry_in = {.name = mp_str.via.str};
+    const ch_hashmap_entry* entry_out = hashmap_get(map, &entry_in);
+    assert(entry_out);
+    return entry_out->offset;
+}
+
+static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* ctx,
+                                                           ch_hashmap_entry** sorted_maps,
+                                                           size_t n_sorted_maps,
+                                                           ch_byte_array* collection_out)
+{
+
+    ch_process_result result = CH_PROCESS_OK;
+
+    // msgpack str -> index
+    struct hashmap* hm_unique_strs = hashmap_new(sizeof(ch_hashmap_entry),
+                                                 n_sorted_maps * 16,
+                                                 0,
+                                                 0,
+                                                 ch_hashmap_entry_hash,
+                                                 ch_hashmap_entry_compare,
+                                                 NULL,
+                                                 NULL);
+    size_t total_typedescs = 0;
+    size_t string_alloc_size = 0;
+
+    // add all unique strings to hashmap, count how much space we need for them, & count type descs
+    for (size_t i = 0; i < n_sorted_maps; i++) {
+        msgpack_object_kv* dm_kv = sorted_maps[i]->o.via.map.ptr;
+        msgpack_object dm_strs[] = {dm_kv[CH_DM_NAME].val, dm_kv[CH_DM_MODULE].val};
+        result = ch_add_strings_to_map(hm_unique_strs, dm_strs, ARRAYSIZE(dm_strs), &string_alloc_size);
+        if (result != CH_PROCESS_OK)
+            goto end;
+        msgpack_object_array fields = dm_kv[CH_DM_FIELDS].val.via.array;
+        total_typedescs += fields.size;
+        for (size_t j = 0; j < fields.size; j++) {
+            msgpack_object_kv* td_kv = fields.ptr[j].via.map.ptr;
+            msgpack_object td_strs[] = {td_kv[CH_TD_NAME].val, td_kv[CH_TD_EXTERNAL_NAME].val};
+            result = ch_add_strings_to_map(hm_unique_strs, td_strs, ARRAYSIZE(td_strs), &string_alloc_size);
+            if (result != CH_PROCESS_OK)
+                goto end;
+        }
+        sorted_maps[i]->offset = i;
+    }
+
+    collection_out->len = sizeof(ch_datamap_collection) + n_sorted_maps * sizeof(ch_datamap) +
+                          total_typedescs * sizeof(ch_type_description) + string_alloc_size +
+                          sizeof(ch_datamap_collection_tag);
+
+    collection_out->arr = calloc(1, collection_out->len);
+    if (!collection_out->arr) {
+        result = CH_PROCESS_OUT_OF_MEMORY;
+        goto end;
+    }
+
+    ch_datamap_collection* ch_col = (ch_datamap_collection*)collection_out->arr;
+    ch_datamap* ch_dms = (ch_datamap*)(ch_col + 1);
+    ch_type_description* ch_tds = (ch_type_description*)(ch_dms + n_sorted_maps);
+    char* string_buf = (char*)(ch_tds + total_typedescs);
+    ch_datamap_collection_tag* ch_tag = (ch_datamap_collection_tag*)(string_buf + string_alloc_size);
+
+    // fill collection
+    ch_col->maps = NULL;
+    ch_col->n_maps = n_sorted_maps;
+
+    // fill strings
+    ch_hashmap_entry* entry = NULL;
+    size_t bucket = 0;
+    while (hashmap_iter(hm_unique_strs, &bucket, &entry))
+        memcpy(string_buf + entry->offset, entry->name.ptr, entry->name.size);
+
+#ifndef NDEBUG
+    // check that string section is filled (at most one '\0' char between consecutive strings)
+    for (const char* s = string_buf; s < (char*)ch_tag - 2; s++)
+        assert(*(uint16_t*)s != 0);
+#endif
+
+    // fill maps & type descriptions
+    ch_datamap* ch_dm = ch_dms;
+    ch_type_description* ch_td = ch_tds;
+    for (size_t i = 0; i < n_sorted_maps; i++) {
+        msgpack_object_map mp_dm = sorted_maps[i]->o.via.map;
+        msgpack_object_array mp_tds = mp_dm.ptr[CH_DM_FIELDS].val.via.array;
+        ch_change_datamap_references_to_strings(mp_dm);
+        ch_dm->base_map_rel_off = ch_get_entry_offset(ctx->dm_hashmap, mp_dm.ptr[CH_DM_BASE].val);
+        ch_dm->class_name_rel_off = ch_get_entry_offset(hm_unique_strs, mp_dm.ptr[CH_DM_NAME].val);
+        ch_dm->module_name_rel_off = ch_get_entry_offset(hm_unique_strs, mp_dm.ptr[CH_DM_MODULE].val);
+        ch_dm->n_fields = mp_tds.size;
+        ch_dm->fields_rel_off = ch_dm->n_fields == 0 ? CH_REL_OFF_NULL : ch_td - ch_tds;
+        for (size_t j = 0; j < mp_tds.size; j++) {
+            msgpack_object_kv* td_kv = mp_tds.ptr->via.map.ptr;
+            ch_td->type = td_kv[CH_TD_TYPE].val.via.u64;
+            ch_td->name_rel_off = ch_get_entry_offset(hm_unique_strs, td_kv[CH_TD_NAME].val);
+            ch_td->external_name_rel_off = ch_get_entry_offset(hm_unique_strs, td_kv[CH_TD_EXTERNAL_NAME].val);
+            ch_td->off = (int)td_kv[CH_TD_OFF].val.via.u64;
+            ch_td->flags = (unsigned short)td_kv[CH_TD_FLAGS].val.via.u64;
+            ch_td->save_restore_ops_rel_off = (size_t)td_kv[CH_TD_RESTORE_OPS].val.via.u64;
+            ch_td->embedded_map_rel_off = ch_get_entry_offset(ctx->dm_hashmap, td_kv[CH_TD_EMBEDDED].val);
+            ch_td++;
+        }
+        ch_dm++;
+    }
+
+    // consistency checks, check that the expected amount of data was written
+    assert((size_t)(ch_dm - ch_dms) == n_sorted_maps);
+    assert((size_t)(ch_td - ch_tds) == total_typedescs);
+    assert((void*)ch_dm == (void*)ch_tds);
+    assert((void*)ch_td == (void*)string_buf);
+
+    // fill tag
+    ch_tag->datamaps_start = (size_t)ch_dms - (size_t)collection_out->arr;
+    ch_tag->typedescs_start = (size_t)ch_tds - (size_t)collection_out->arr;
+    ch_tag->strings_start = (size_t)string_buf - (size_t)collection_out->arr;
+    ch_tag->version = CH_DATAMAP_STRUCT_VERSION;
+    strncpy(ch_tag->magic, CH_COLLECTION_MAGIC, sizeof ch_tag->magic);
+
+end:
+    hashmap_free(hm_unique_strs);
+    return result;
 }
 
 static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
@@ -382,13 +527,13 @@ static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
     size_t n_datamaps = hashmap_count(ctx->dm_hashmap);
     if (n_datamaps == 0) {
         CH_LOG_ERROR(ctx, "Writing to file without any sent datamaps, stopping.");
-        return CH_UNPACK_CONSTRAINT_FAIL;
+        return CH_PROCESS_ERROR;
     }
 
     ch_hashmap_entry** sorted_maps = malloc(n_datamaps * sizeof(ch_hashmap_entry*));
 
     if (!sorted_maps)
-        return CH_UNPACK_OUT_OF_MEMORY;
+        return CH_PROCESS_OUT_OF_MEMORY;
 
     size_t map_idx = 0;
     size_t it = 0;
@@ -405,34 +550,63 @@ static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
     */
     qsort(sorted_maps, n_datamaps, sizeof *sorted_maps, ch_cmp_datamaps);
 
-    ch_process_result result = CH_UNPACK_OK;
+    ch_process_result result = CH_PROCESS_OK;
 
     switch (ctx->collection_save_info->output_type) {
-        case CH_DC_STRUCT_MSGPACK:
+        case CH_DC_STRUCT_MSGPACK: {
             FILE* f = fopen(ctx->collection_save_info->output_file_path, "wb");
-    if (!f) {
+            if (!f) {
                 CH_LOG_ERROR(ctx,
                              "Failed to write to file '%s', (errno=%d)",
                              ctx->collection_save_info->output_file_path,
                              errno);
-        return CH_UNPACK_CONSTRAINT_FAIL;
-    }
+                result = CH_PROCESS_ERROR;
+                goto end;
+            }
             CH_LOG_INFO(ctx,
                         "Writing %zu datamaps to '%s'.\n",
                         n_datamaps,
                         ctx->collection_save_info->output_file_path);
-    msgpack_packer packer = {.data = f, .callback = msgpack_fbuffer_write};
+            msgpack_packer packer = {.data = f, .callback = msgpack_fbuffer_write};
             result = ch_msgpack_write_collection(&packer, sorted_maps, n_datamaps, ctx->collection_save_info);
-            if (result != CH_UNPACK_OK)
-        CH_LOG_ERROR(ctx, "Failed writing datamaps (errno=%d).", errno);
+            if (result != CH_PROCESS_OK)
+                CH_LOG_ERROR(ctx, "Failed writing datamaps (errno=%d).", errno);
             fclose(f);
             break;
-        case CH_DC_STRUCT_NAKED:
+        }
+        case CH_DC_STRUCT_NAKED: {
+            ch_byte_array collection;
+            result = ch_create_naked_packed_collection(ctx, sorted_maps, n_datamaps, &collection);
+            if (result != CH_PROCESS_OK)
+                break;
+            FILE* f = fopen(ctx->collection_save_info->output_file_path, "wb");
+            if (!f) {
+                CH_LOG_ERROR(ctx,
+                             "Failed to write to file '%s', (errno=%d)",
+                             ctx->collection_save_info->output_file_path,
+                             errno);
+                result = CH_PROCESS_ERROR;
+                goto end;
+            }
+            CH_LOG_INFO(ctx,
+                        "Writing %zu datamaps to '%s'.\n",
+                        n_datamaps,
+                        ctx->collection_save_info->output_file_path);
+            size_t written = fwrite(collection.arr, 1, collection.len, f);
+            if (written != collection.len) {
+                CH_LOG_ERROR(ctx, "fwrite() failed");
+                result = CH_PROCESS_ERROR;
+            }
+            fclose(f);
+            ch_free_array(&collection);
+            break;
+        }
         case CH_DC_ARCHIVE_NAKED:
         default:
             assert(0);
     }
 
+end:
     free(sorted_maps);
     return result;
 }
@@ -451,25 +625,25 @@ static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, ms
     msgpack_object msg_data = kv[1].val;
     if (msg_type != CH_MSG_HELLO && !ctx->got_hello) {
         CH_LOG_ERROR(ctx, "Payload sent other messages before sending HELLO.");
-        return CH_UNPACK_CONSTRAINT_FAIL;
+        return CH_PROCESS_ERROR;
     }
     switch (msg_type) {
         case CH_MSG_HELLO:
             CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_NIL);
             CH_LOG_INFO(ctx, "Got HELLO message from payload.\n");
             ctx->got_hello = true;
-            return CH_UNPACK_OK;
+            return CH_PROCESS_OK;
         case CH_MSG_GOODBYE:
             CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_NIL);
             CH_LOG_INFO(ctx, "Got GOODBYE message from payload.\n");
-            ch_write_all_to_file(ctx);
-            return CH_UNPACK_EXIT;
+            CH_CHECK(ch_write_all_to_file(ctx));
+            return CH_PROCESS_FINISHED;
         case CH_MSG_LOG_INFO:
         case CH_MSG_LOG_ERROR:
             CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_STR);
             ch_log_level level = msg_type == CH_MSG_LOG_INFO ? CH_LL_INFO : CH_LL_ERROR;
             CH_LOG_LEVEL(level, ctx, "[payload] %.*s\n", msg_data.via.str.size, msg_data.via.str.ptr);
-            return CH_UNPACK_OK;
+            return CH_PROCESS_OK;
         case CH_MSG_DATAMAP:
             CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_MAP);
             CH_CHECK(ch_recurse_visit_datamaps(msg_data, ch_check_dm_schema_cb, NULL));
@@ -481,11 +655,11 @@ static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, ms
                         msg_data.via.map.ptr[CH_DM_NAME].val.via.str.ptr,
                         msg_data.via.map.ptr[CH_DM_MODULE].val.via.str.size,
                         msg_data.via.map.ptr[CH_DM_MODULE].val.via.str.ptr);
-            return CH_UNPACK_OK;
+            return CH_PROCESS_OK;
             break;
         case CH_MSG_LINKED_NAME:
         default:
-            return CH_UNPACK_WRONG_FORMAT;
+            return CH_PROCESS_BAD_FORMAT;
     }
 }
 
@@ -507,15 +681,15 @@ bool ch_msg_ctx_process(ch_process_msg_ctx* ctx)
     bool save_unpacked = false;
 
     switch (ch_process_message_pack_msg(ctx, ctx->unpacked_ll->unp.data, &save_unpacked)) {
-        case CH_UNPACK_OK:
+        case CH_PROCESS_OK:
             break;
-        case CH_UNPACK_EXIT:
-        case CH_UNPACK_CONSTRAINT_FAIL:
+        case CH_PROCESS_FINISHED:
+        case CH_PROCESS_ERROR:
             return false;
-        case CH_UNPACK_WRONG_FORMAT:
+        case CH_PROCESS_BAD_FORMAT:
             CH_LOG_ERROR(ctx, "Received wrong msgpack format from payload.");
             return false;
-        case CH_UNPACK_OUT_OF_MEMORY:
+        case CH_PROCESS_OUT_OF_MEMORY:
             CH_LOG_ERROR(ctx, "Out of memory while processing message from payload.");
             return false;
         default:

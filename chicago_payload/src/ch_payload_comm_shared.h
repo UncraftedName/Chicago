@@ -90,45 +90,54 @@ bool ch_get_required_modules(DWORD proc_id, BYTE* base_addresses[CH_MOD_COUNT]);
 * which uniquely reference a datamap that came before.
 */
 
-#define CH_BEGIN_MSGPACK_KEYS(group_name) enum { _ch_##group_name##_group_start = __COUNTER__ }
+#define CH_MSGPACK_KEYS_BEGIN(group_name) enum { _ch_##group_name##_group_start = __COUNTER__ }
 
 #define CH_DEFINE_MSGPACK_KEY(group_name, ref_name, key_name)             \
     enum { ref_name = __COUNTER__ - _ch_##group_name##_group_start - 1 }; \
     static const char ref_name##_key[] = key_name
 
+#define CH_MSGPACK_KEYS_END(group_name) \
+    enum { _ch_##group_name##_group_end = __COUNTER__ - _ch_##group_name##_group_start - 1 }
+
 #define CH_KEY_NAME(ref_name) ref_name##_key
+#define CH_KEY_GROUP_COUNT(group_name) _ch_##group_name##_group_end
 
 // update if any changes are made :)
 #define CH_MSGPACK_FORMAT_VERSION 3
 
-CH_BEGIN_MSGPACK_KEYS(KEYS_IPC_HEADER);
+CH_MSGPACK_KEYS_BEGIN(KEYS_IPC_HEADER);
 CH_DEFINE_MSGPACK_KEY(KEYS_IPC_HEADER, CH_IPC_TYPE, "msg_type");
 CH_DEFINE_MSGPACK_KEY(KEYS_IPC_HEADER, CH_IPC_DATA, "msg_data");
+CH_MSGPACK_KEYS_END(KEYS_IPC_HEADER);
 
-CH_BEGIN_MSGPACK_KEYS(KEYS_FILE_HEADER);
+CH_MSGPACK_KEYS_BEGIN(KEYS_FILE_HEADER);
 CH_DEFINE_MSGPACK_KEY(KEYS_FILE_HEADER, CH_HEADER_VERSION, "chicago_format_version");
 CH_DEFINE_MSGPACK_KEY(KEYS_FILE_HEADER, CH_HEADER_GAME_NAME, "game_name");
 CH_DEFINE_MSGPACK_KEY(KEYS_FILE_HEADER, CH_HEADER_GAME_VERSION, "game_version");
 CH_DEFINE_MSGPACK_KEY(KEYS_FILE_HEADER, CH_HEADER_DATAMAPS, "datamaps");
+CH_MSGPACK_KEYS_END(KEYS_FILE_HEADER);
 
 // TODO chains_validated, packed_offsets_computed, packed_size
-CH_BEGIN_MSGPACK_KEYS(KEYS_DM);
+CH_MSGPACK_KEYS_BEGIN(KEYS_DM);
 CH_DEFINE_MSGPACK_KEY(KEYS_DM, CH_DM_NAME, "name");
 CH_DEFINE_MSGPACK_KEY(KEYS_DM, CH_DM_MODULE, "module");
 CH_DEFINE_MSGPACK_KEY(KEYS_DM, CH_DM_MODULE_OFF, "module_offset");
 CH_DEFINE_MSGPACK_KEY(KEYS_DM, CH_DM_BASE, "base_map");
 CH_DEFINE_MSGPACK_KEY(KEYS_DM, CH_DM_FIELDS, "fields");
+CH_MSGPACK_KEYS_END(KEYS_DM);
 
 // TODO override_field
-CH_BEGIN_MSGPACK_KEYS(KEYS_TD);
+CH_MSGPACK_KEYS_BEGIN(KEYS_TD);
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_NAME, "name");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_TYPE, "type");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_FLAGS, "flags");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_EXTERNAL_NAME, "external_name");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_OFF, "offset");
+CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_FIELD_SIZE, "field_size");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_TOTAL_SIZE, "total_size_bytes");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_RESTORE_OPS, "restore_ops");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_INPUT_FUNC, "input_func");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_EMBEDDED, "embedded_map");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_OVERRIDE_COUNT, "override_count");
 CH_DEFINE_MSGPACK_KEY(KEYS_TD, CH_TD_TOL, "float_tolerance");
+CH_MSGPACK_KEYS_END(KEYS_TD);
