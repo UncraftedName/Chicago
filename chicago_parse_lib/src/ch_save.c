@@ -65,18 +65,10 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     if (br_after_fields.overflowed) {
         err = CH_ERR_READER_OVERFLOWED;
     } else {
-        const ch_datamap* dm_game_header;
-        const ch_datamap* dm_global_state;
-        err = ch_lookup_datamap(ctx, "GAME_HEADER", &dm_game_header);
+        err = ch_br_read_save_datamap(ctx, "GameHeader", "GAME_HEADER", &ctx->data->game_header);
         if (err)
             return err;
-        err = ch_br_read_save_fields(ctx, "GameHeader", dm_game_header, &ctx->data->game_header);
-        if (err)
-            return err;
-        err = ch_lookup_datamap(ctx, "CGlobalState", &dm_global_state);
-        if (err)
-            return err;
-        err = ch_br_read_save_fields(ctx, "GLOBAL", dm_global_state, &ctx->data->global_state);
+        err = ch_br_read_save_datamap(ctx, "GLOBAL", "CGlobalState", &ctx->data->global_state);
         if (err)
             return err;
     }
@@ -112,12 +104,14 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
     // read state files
 
-    // TODO put these in a single array
+    ctx->data->n_state_files = n_state_files;
+    ctx->data->state_files = calloc(n_state_files, sizeof(ch_state_file));
+    if (!ctx->data->state_files)
+        return CH_ERR_OUT_OF_MEMORY;
 
-    ch_state_file** sf = &ctx->data->state_files;
     for (int i = 0; i < n_state_files && !err; i++) {
-        *sf = calloc(1, sizeof **sf);
-        if (!ch_br_read(br, (**sf).name, sizeof((**sf).name)))
+        ch_state_file* sf = &ctx->data->state_files[i];
+        if (!ch_br_read(br, sf->name, sizeof(sf->name)))
             return CH_ERR_READER_OVERFLOWED;
         int sf_len_bytes = ch_br_read_32(br);
         if (sf_len_bytes < 0)
@@ -125,9 +119,8 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
         ch_byte_reader br_after_sf = ch_br_split_skip_swap(br, sf_len_bytes);
         if (br_after_sf.overflowed)
             return CH_ERR_READER_OVERFLOWED;
-        err = ch_parse_state_file(ctx, *sf);
+        err = ch_parse_state_file(ctx, sf);
         *br = br_after_sf;
-        sf = &(**sf).next;
     }
 
     return err;
@@ -161,11 +154,7 @@ ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
 
 void ch_free_parsed_save_data(ch_parsed_save_data* parsed_data)
 {
-    while (parsed_data->state_files) {
-        ch_state_file* sf = parsed_data->state_files;
-        parsed_data->state_files = parsed_data->state_files->next;
-        // TODO - free sf data here
-        free(sf);
-    }
+    // TODO - free sf data here
+    free(parsed_data->state_files);
     memset(parsed_data, 0, sizeof *parsed_data);
 }

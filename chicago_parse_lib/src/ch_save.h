@@ -94,7 +94,6 @@ typedef struct ch_sf_entity_patch {
 } ch_sf_entity_patch;
 
 typedef struct ch_state_file {
-    struct ch_state_file* next;
     char name[260];
     ch_state_file_type sf_type;
     union {
@@ -131,7 +130,7 @@ typedef struct ch_datamap_collection {
 } ch_datamap_collection;
 
 typedef struct ch_parse_info {
-    ch_datamap_collection* datamap_collection;
+    const ch_datamap_collection* datamap_collection;
     void* bytes;
     size_t n_bytes;
 } ch_parse_info;
@@ -139,6 +138,7 @@ typedef struct ch_parse_info {
 typedef struct ch_parsed_save_data {
     ch_tag tag;
     ch_state_file* state_files;
+    size_t n_state_files;
     ch_parsed_fields game_header;
     ch_parsed_fields global_state;
 } ch_parsed_save_data;
