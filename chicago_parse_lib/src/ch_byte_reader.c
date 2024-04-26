@@ -49,15 +49,12 @@ ch_err ch_br_parse_block(ch_byte_reader* br, const ch_symbol_table* st, ch_block
     return ch_br_read_symbol(br, st, &block->symbol);
 }
 
-ch_err ch_br_read_save_fields(ch_parsed_save_ctx* ctx,
-                              const char* name,
-                              const ch_datamap* map,
-                              ch_parsed_fields* fields_out)
+ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
+                            const char* expected_symbol,
+                            const ch_datamap* map,
+                            unsigned char* class_ptr)
 {
     // CRestore::ReadFields
-
-    memset(fields_out, 0, sizeof *fields_out);
-    fields_out->map = map;
 
     ch_byte_reader* br = &ctx->br;
 
@@ -69,26 +66,13 @@ ch_err ch_br_read_save_fields(ch_parsed_save_ctx* ctx,
     if (err)
         return err;
     // TODO this is a great place to log errors
-    if (_stricmp(symbol, name))
+    if (_stricmp(symbol, expected_symbol))
         return CH_ERR_BAD_SYMBOL;
 
-    // first calculate how much space we need
-
-    int num_field_buf_bytes = 0;
-    int n_fields = ch_br_read_32(br);
     // most of the time fields will be stored in the same order as in the datamap
     int cookie = 0;
 
-    ch_byte_reader br_before_fields = *br;
-
-    if (map->n_fields <= 0)
-        return CH_ERR_BAD_FIELD_COUNT;
-
-    // TODO merge this calloc with the one below
-    fields_out->n_packed_fields = n_fields;
-    fields_out->packed_info = calloc(n_fields, sizeof(ch_parsed_field_info));
-    if (!fields_out->packed_info)
-        return CH_ERR_OUT_OF_MEMORY;
+    int n_fields = ch_br_read_32(br);
 
     for (int i = 0; i < n_fields; i++) {
         ch_block block;
@@ -97,13 +81,11 @@ ch_err ch_br_read_save_fields(ch_parsed_save_ctx* ctx,
             return err;
 
         // CRestore::FindField
-        ch_parsed_field_info* info = &fields_out->packed_info[i];
-        info->data_off = num_field_buf_bytes;
         const ch_type_description* field = NULL;
         size_t n_tests = 0;
         for (; n_tests < map->n_fields; n_tests++) {
-            info->field_idx = cookie++ % map->n_fields;
-            field = &map->fields[info->field_idx];
+            cookie = (cookie + 1) % map->n_fields;
+            field = &map->fields[cookie];
             if (!_stricmp(field->name, block.symbol))
                 break;
         }
@@ -114,40 +96,33 @@ ch_err ch_br_read_save_fields(ch_parsed_save_ctx* ctx,
         if (field->type <= FIELD_VOID || field->type >= FIELD_TYPECOUNT)
             return CH_ERR_BAD_FIELD_TYPE;
 
+
+        // TODO TODO this logic is wrong even for basic fields, the block size must be taken into account
+        // TODO TODO looks like type descs really do need an individual elem size (for e.g. vector restore)
+
         if (field->type == FIELD_CUSTOM) {
             // TODO handle custom fields
-            info->data_len = -1;
+            ch_br_skip(br, block.size_bytes);
+        } else if (field->type == FIELD_EMBEDDED) {
+            assert(field->embedded_map); // TODO change to conditional
+            // TODO merge this reader splitting with the custom field reading (not the trivial reading though)
+            ch_byte_reader br_after_block = ch_br_split_skip_swap(br, block.size_bytes);
+            for (size_t j = 0; j < block.size_bytes / field->total_size_bytes; j++) {
+                err = ch_br_restore_recursive(ctx, field->embedded_map, class_ptr + i * field->total_size_bytes);
+                if (err != CH_ERR_NONE)
+                    return err;
+            }
+            if (ctx->br.overflowed)
+                return CH_ERR_READER_OVERFLOWED;
+            *br = br_after_block;
         } else {
-            // for simple fields we will just memcpy so we can assume this to be true
-            // TODO we might guess what the fields are - so add a check here to see if the block size is a multiple of the field count
-            info->data_len = block.size_bytes;
+            // add a check here to see if the block size is a multiple of the field count
+            ch_br_read(br, class_ptr + field->ch_offset, field->total_size_bytes);
         }
-        if (info->data_len > 0)
-            num_field_buf_bytes += info->data_len;
-        ch_br_skip(br, block.size_bytes);
-    }
 
-    if (num_field_buf_bytes == 0)
-        return CH_ERR_NONE;
+        // TODO apply fixups (time, ticks, etc.) CRestore::ReadTick has save delay logic
 
-    fields_out->packed_data = calloc(num_field_buf_bytes, 1);
-    if (!fields_out->packed_data)
-        return CH_ERR_OUT_OF_MEMORY;
-
-    // now read the fields
-
-    for (int i = 0; i < n_fields; i++) {
-        ch_parsed_field_info* field_info = &fields_out->packed_info[i];
-        const ch_type_description* field = &map->fields[field_info->field_idx];
-        short block_size_bytes = ch_br_read_16_unchecked(&br_before_fields);
-        ch_br_skip_unchecked(&br_before_fields, 2);
-        if (field->type == FIELD_CUSTOM) {
-            // TODO handle custom fields
-        } else {
-            memcpy(&fields_out->packed_data[field_info->data_off], br_before_fields.cur, field_info->data_len);
-            // TODO handle adjustments (e.g. time)
-        }
-        ch_br_skip_unchecked(&br_before_fields, block_size_bytes);
+        // ch_br_skip(br, block.size_bytes);
     }
 
     return CH_ERR_NONE;

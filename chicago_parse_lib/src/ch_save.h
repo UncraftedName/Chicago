@@ -7,6 +7,7 @@
 
 #include "SDK/datamap.h"
 #include "thirdparty/hashmap/hashmap.h"
+#include "ch_arena.h"
 
 #define CH_SAVE_FILE_MAX_SIZE (1024 * 1024 * 32)
 
@@ -64,21 +65,10 @@ typedef struct ch_tag {
     uint32_t version;
 } ch_tag;
 
-typedef struct ch_parsed_field_info {
-    int field_idx;
-    int data_off;
-    // A negative data len means that although this field was present in the save file, there wasn't
-    // enough information to parse it. This should only happen for custom fields or guessed datamaps.
-    int data_len;
-} ch_parsed_field_info;
-
-typedef struct ch_parsed_fields {
-    struct ch_parsed_fields* base_fields;
-    const ch_datamap* map;
-    unsigned char* packed_data;
-    ch_parsed_field_info* packed_info;
-    size_t n_packed_fields;
-} ch_parsed_fields;
+typedef struct ch_restored_class {
+    const ch_datamap* dm;
+    unsigned char* data;
+} ch_restored_class;
 
 typedef struct ch_sf_save_data {
     ch_tag tag;
@@ -135,13 +125,16 @@ typedef struct ch_parse_info {
     size_t n_bytes;
 } ch_parse_info;
 
+// make sure to use ch_parsed_save_new to create this class :) 
 typedef struct ch_parsed_save_data {
     ch_tag tag;
     ch_state_file* state_files;
     size_t n_state_files;
-    ch_parsed_fields game_header;
-    ch_parsed_fields global_state;
+    ch_restored_class game_header;
+    ch_restored_class global_state;
+    ch_arena* _arena;
 } ch_parsed_save_data;
 
+ch_parsed_save_data* ch_parsed_save_new(void);
+void ch_parsed_save_free(ch_parsed_save_data* parsed_data);
 ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info* info);
-void ch_free_parsed_save_data(ch_parsed_save_data* parsed_data);

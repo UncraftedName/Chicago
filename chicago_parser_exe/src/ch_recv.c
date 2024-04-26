@@ -10,6 +10,7 @@
 
 #include "ch_save.h"
 #include "ch_archive.h"
+#include "ch_arena.h" // just for ch_align_to
 
 typedef struct ch_mp_unpacked_ll {
     msgpack_unpacked unp;
@@ -423,7 +424,7 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
                                                  ch_hashmap_entry_compare,
                                                  NULL,
                                                  NULL);
-    size_t total_typedescs = 0;
+    size_t total_typedescs_to_write = 0;
     size_t string_alloc_size = 0;
 
     // add all unique strings to hashmap, count how much space we need for them, & count type descs
@@ -434,9 +435,11 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
         if (result != CH_PROCESS_OK)
             goto end;
         msgpack_object_array fields = dm_kv[CH_DM_FIELDS].val.via.array;
-        total_typedescs += fields.size;
         for (size_t j = 0; j < fields.size; j++) {
             msgpack_object_kv* td_kv = fields.ptr[j].via.map.ptr;
+            if (!(td_kv[CH_TD_FLAGS].val.via.u64 & FTYPEDESC_SAVE))
+                continue;
+            total_typedescs_to_write++;
             msgpack_object td_strs[] = {td_kv[CH_TD_NAME].val, td_kv[CH_TD_EXTERNAL_NAME].val};
             result = ch_add_strings_to_map(hm_unique_strs, td_strs, ARRAYSIZE(td_strs), &string_alloc_size);
             if (result != CH_PROCESS_OK)
@@ -446,7 +449,7 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
     }
 
     collection_out->len = sizeof(ch_datamap_collection) + n_sorted_maps * sizeof(ch_datamap) +
-                          total_typedescs * sizeof(ch_type_description) + string_alloc_size +
+                          total_typedescs_to_write * sizeof(ch_type_description) + string_alloc_size +
                           sizeof(ch_datamap_collection_tag);
 
     collection_out->arr = calloc(1, collection_out->len);
@@ -458,7 +461,7 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
     ch_datamap_collection* ch_col = (ch_datamap_collection*)collection_out->arr;
     ch_datamap* ch_dms = (ch_datamap*)(ch_col + 1);
     ch_type_description* ch_tds = (ch_type_description*)(ch_dms + n_sorted_maps);
-    char* string_buf = (char*)(ch_tds + total_typedescs);
+    char* string_buf = (char*)(ch_tds + total_typedescs_to_write);
     ch_datamap_collection_tag* ch_tag = (ch_datamap_collection_tag*)(string_buf + string_alloc_size);
 
     // fill collection
@@ -486,25 +489,43 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
         ch_dm->base_map_rel_off = ch_get_entry_offset(ctx->dm_hashmap, mp_dm.ptr[CH_DM_BASE].val);
         ch_dm->class_name_rel_off = ch_get_entry_offset(hm_unique_strs, mp_dm.ptr[CH_DM_NAME].val);
         ch_dm->module_name_rel_off = ch_get_entry_offset(hm_unique_strs, mp_dm.ptr[CH_DM_MODULE].val);
-        ch_dm->n_fields = mp_tds.size;
-        ch_dm->fields_rel_off = ch_dm->n_fields == 0 ? CH_REL_OFF_NULL : ch_td - ch_tds;
+        ch_dm->fields_rel_off = (size_t)(ch_td - ch_tds);
+        // packed offset will be relative to class start
+        // maps are sorted by dependency order, so base dm will be processed first (if it exists)
+        size_t ch_off = 0;
+        if (ch_dm->base_map_rel_off != CH_REL_OFF_NULL)
+            ch_off = ch_dms[ch_dm->base_map_rel_off].ch_size;
+        size_t n_ch_dm_tds = 0;
         for (size_t j = 0; j < mp_tds.size; j++) {
             msgpack_object_kv* td_kv = mp_tds.ptr[j].via.map.ptr;
+            if (!(td_kv[CH_TD_FLAGS].val.via.u64 & FTYPEDESC_SAVE))
+                continue;
+            n_ch_dm_tds++;
             ch_td->type = td_kv[CH_TD_TYPE].val.via.u64;
             ch_td->name_rel_off = ch_get_entry_offset(hm_unique_strs, td_kv[CH_TD_NAME].val);
             ch_td->external_name_rel_off = ch_get_entry_offset(hm_unique_strs, td_kv[CH_TD_EXTERNAL_NAME].val);
-            ch_td->off = (int)td_kv[CH_TD_OFF].val.via.u64;
+            ch_td->game_offset = (size_t)td_kv[CH_TD_OFF].val.via.u64;
+            ch_td->ch_offset = ch_off;
+            ch_td->total_size_bytes = (size_t)td_kv[CH_TD_TOTAL_SIZE].val.via.u64;
             ch_td->flags = (unsigned short)td_kv[CH_TD_FLAGS].val.via.u64;
             ch_td->save_restore_ops_rel_off = (size_t)td_kv[CH_TD_RESTORE_OPS].val.via.u64;
             ch_td->embedded_map_rel_off = ch_get_entry_offset(ctx->dm_hashmap, td_kv[CH_TD_EMBEDDED].val);
+            if (ch_td->type == FIELD_CUSTOM)
+                ch_off += sizeof(void*);
+            else
+                ch_off += CH_ALIGN_TO(ch_td->total_size_bytes, min(sizeof(void*), ch_td->total_size_bytes));
             ch_td++;
         }
+        ch_dm->n_fields = n_ch_dm_tds;
+        if (n_ch_dm_tds == 0)
+            ch_dm->fields_rel_off = CH_REL_OFF_NULL;
+        ch_dm->ch_size = CH_ALIGN_TO(ch_off, sizeof(void*));
         ch_dm++;
     }
 
     // consistency checks, check that the expected amount of data was written
     assert((size_t)(ch_dm - ch_dms) == n_sorted_maps);
-    assert((size_t)(ch_td - ch_tds) == total_typedescs);
+    assert((size_t)(ch_td - ch_tds) == total_typedescs_to_write);
     assert((void*)ch_dm == (void*)ch_tds);
     assert((void*)ch_td == (void*)string_buf);
 

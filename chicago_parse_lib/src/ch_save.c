@@ -5,9 +5,57 @@
 #include "ch_field_reader.h"
 #include "ch_save_internal.h"
 
+size_t ch_field_type_byte_size(ch_field_type ft)
+{
+    switch (ft) {
+        case FIELD_FLOAT:
+        case FIELD_TIME:
+            return sizeof(float);
+        case FIELD_VECTOR:
+        case FIELD_POSITION_VECTOR:
+            return 3 * sizeof(float);
+        case FIELD_QUATERNION:
+            return 4 * sizeof(float);
+        case FIELD_BOOLEAN:
+        case FIELD_CHARACTER:
+            return sizeof(uint8_t);
+        case FIELD_SHORT:
+            return sizeof(uint16_t);
+        case FIELD_STRING:
+        case FIELD_INTEGER:
+        case FIELD_COLOR32:
+        case FIELD_CLASSPTR:
+        case FIELD_EHANDLE:
+        case FIELD_EDICT:
+        case FIELD_TICK:
+        case FIELD_MODELNAME:
+        case FIELD_SOUNDNAME:
+        case FIELD_INPUT:
+        case FIELD_MODELINDEX:
+        case FIELD_MATERIALINDEX:
+            return sizeof(uint32_t);
+        case FIELD_FUNCTION:
+            return sizeof(void*);
+        case FIELD_VECTOR2D:
+        case FIELD_INTERVAL:
+            return 2 * sizeof(float);
+        case FIELD_VMATRIX:
+        case FIELD_VMATRIX_WORLDSPACE:
+            return 16 * sizeof(float);
+        case FIELD_MATRIX3X4_WORLDSPACE:
+            return 12 * sizeof(float);
+        case FIELD_VOID:
+        case FIELD_EMBEDDED:
+        case FIELD_CUSTOM:
+        case FIELD_TYPECOUNT:
+        default:
+            assert(0);
+            return 0;
+    }
+}
+
 ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info* info)
 {
-    memset(parsed_data, 0, sizeof *parsed_data);
     ch_parsed_save_ctx ctx = {
         .info = info,
         .data = parsed_data,
@@ -17,6 +65,7 @@ ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info
                 .end = (unsigned char*)info->bytes + info->n_bytes,
                 .overflowed = false,
             },
+        .arena = parsed_data->_arena,
     };
     return ch_parse_save_ctx(&ctx);
 }
@@ -65,10 +114,10 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     if (br_after_fields.overflowed) {
         err = CH_ERR_READER_OVERFLOWED;
     } else {
-        err = ch_br_read_save_datamap(ctx, "GameHeader", "GAME_HEADER", &ctx->data->game_header);
+        err = ch_br_restore_class_by_name(ctx, "GameHeader", "GAME_HEADER", &ctx->data->game_header);
         if (err)
             return err;
-        err = ch_br_read_save_datamap(ctx, "GLOBAL", "CGlobalState", &ctx->data->global_state);
+        err = ch_br_restore_class_by_name(ctx, "GLOBAL", "CGlobalState", &ctx->data->global_state);
         if (err)
             return err;
     }
@@ -81,14 +130,13 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
     int n_state_files = 0;
 
-    // TODO this probably should be streamlined, it's extremely verbose
+    // TODO this probably should be streamlined, it's extremely verbose, would be better to iterate over base classes too
 
     // set the number of state files from the game header
-    ch_parsed_fields* pf_game_header = &ctx->data->game_header;
-    for (size_t i = 0; i < pf_game_header->n_packed_fields; i++) {
-        ch_parsed_field_info* pf_info = &pf_game_header->packed_info[i];
-        if (!strcmp(pf_game_header->map->fields[pf_info->field_idx].name, "mapCount")) {
-            n_state_files = *(int*)(pf_game_header->packed_data + pf_info->data_off);
+    ch_restored_class* rdm = &ctx->data->game_header;
+    for (size_t i = 0; i < rdm->dm->n_fields; i++) {
+        if (!strcmp(rdm->dm->fields[i].name, "mapCount")) {
+            n_state_files = *(int*)(rdm->data + rdm->dm->fields[i].ch_offset);
             break;
         }
     }
@@ -105,7 +153,7 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     // read state files
 
     ctx->data->n_state_files = n_state_files;
-    ctx->data->state_files = calloc(n_state_files, sizeof(ch_state_file));
+    ctx->data->state_files = ch_arena_calloc(ctx->arena, n_state_files * sizeof(ch_state_file));
     if (!ctx->data->state_files)
         return CH_ERR_OUT_OF_MEMORY;
 
@@ -152,9 +200,22 @@ ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
     }
 }
 
-void ch_free_parsed_save_data(ch_parsed_save_data* parsed_data)
+ch_parsed_save_data* ch_parsed_save_new(void)
 {
-    // TODO - free sf data here
-    free(parsed_data->state_files);
-    memset(parsed_data, 0, sizeof *parsed_data);
+    ch_arena* arena = ch_arena_new(max(4096, sizeof(ch_parsed_save_data)));
+    if (!arena)
+        return NULL;
+    ch_parsed_save_data* parsed_data = ch_arena_calloc(arena, sizeof(ch_parsed_save_data));
+    if (!parsed_data) {
+        ch_arena_free(arena);
+        return NULL;
+    }
+    parsed_data->_arena = arena;
+    return parsed_data;
+}
+
+// TODO figure out what the hell to do with the symbol tables
+void ch_parsed_save_free(ch_parsed_save_data* parsed_data)
+{
+    ch_arena_free(parsed_data->_arena);
 }

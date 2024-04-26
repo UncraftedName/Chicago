@@ -134,6 +134,8 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
             CH_FIXUP(td->name, strings);
             CH_FIXUP(td->external_name, strings);
             CH_FIXUP(td->embedded_map, dms);
+            if (td->ch_offset >= dm->ch_size)
+                return CH_ARCH_INVALID_COLLECTION;
         }
     }
 

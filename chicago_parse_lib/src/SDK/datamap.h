@@ -44,6 +44,8 @@ typedef enum ch_field_type {
     FIELD_TYPECOUNT, // MUST BE LAST
 } ch_field_type;
 
+size_t ch_field_type_byte_size(ch_field_type ft);
+
 // This field is masked for global entity save/restore
 #define FTYPEDESC_GLOBAL 0x0001
 // This field is saved to disk
@@ -104,7 +106,7 @@ typedef struct typedescription_t {
     int fieldOffset[TD_OFFSET_COUNT]; // 0 == normal, 1 == packed offset
     unsigned short fieldSize;
     short flags;
-    // the name of the variable in the map/fgd data, or the name of the action
+    // the name of the variable in the dm/fgd data, or the name of the action
     const char* externalName;
     // pointer to the function set for save/restoring of custom data types
     void* pSaveRestoreOps;
@@ -162,7 +164,7 @@ typedef struct ch_save_restore_ops {
     }
 
 // update whenever changes are made to ch_type_description or ch_datamap
-#define CH_DATAMAP_STRUCT_VERSION 2
+#define CH_DATAMAP_STRUCT_VERSION 3
 
 #define CH_REL_OFF_NULL SIZE_MAX
 
@@ -174,6 +176,7 @@ typedef struct ch_datamap {
     size_t n_fields;
     // necessary to keep this to uniquely determine restore ops (in case of collisions across modules)
     CH_PACKED_PTR(const char*, module_name);
+    size_t ch_size;
 } ch_datamap;
 
 // a slightly modified version of the game's typedescription_t
@@ -183,7 +186,9 @@ typedef struct ch_type_description {
     char _pad[2];
     CH_PACKED_PTR(const char*, name);
     CH_PACKED_PTR(const char*, external_name);
-    size_t off;
+    size_t game_offset;
+    size_t ch_offset;
+    size_t total_size_bytes;
     CH_PACKED_PTR(const struct ch_save_restore_ops*, save_restore_ops);
     CH_PACKED_PTR(const struct ch_datamap*, embedded_map);
 } ch_type_description;

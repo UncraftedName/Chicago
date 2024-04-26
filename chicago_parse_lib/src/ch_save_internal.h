@@ -15,6 +15,7 @@ typedef struct ch_symbol_table {
 typedef struct ch_parsed_save_ctx {
     const ch_parse_info* info;
     ch_parsed_save_data* data;
+    ch_arena* arena; // same pointer as in the save data
     ch_byte_reader br;
     ch_symbol_table st;
 } ch_parsed_save_ctx;
