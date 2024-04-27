@@ -10,7 +10,8 @@ typedef struct ch_cr_utl_vector_restored {
     ch_field_type field_type;
 } ch_cr_utl_vector_restored;
 
-#define CH_UTL_VEC_ELEM_PTR(utl_vec, i) ((utl_vec).elems + (utl_vec).elem_size * i)
+#define CH_UTL_VEC_ELEM_PTR(utl_vec, i) \
+    (assert((size_t)(i) < (utl_vec).n_elems), (utl_vec).elems + (utl_vec).elem_size * (i))
 
 ch_err ch_cr_utl_vector_restore_to(ch_parsed_save_ctx* ctx,
                                    ch_field_type field_type,

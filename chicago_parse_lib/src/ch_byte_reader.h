@@ -85,6 +85,20 @@ inline ch_byte_reader ch_br_split_skip_swap(ch_byte_reader* br, size_t chunk_siz
     }
 }
 
+/*
+* Creates & returns a byte reader at some position relative
+* to the given reader. The given reader is unchanged.
+*/
+inline ch_byte_reader ch_br_jmp_rel(const ch_byte_reader* br, size_t jmp_size) {
+    if (ch_br_could_skip(br, jmp_size)) {
+        ch_byte_reader ret = {.cur = br->cur + jmp_size, .end = br->end};
+        return ret;
+    } else {
+        ch_byte_reader ret = {.cur = br->end, .end = br->end, .overflowed = true};
+        return ret;
+    }
+}
+
 #define CH_BR_DEFINE_PRIMITIVE_READ(func_name, ret_type) \
     inline ret_type func_name(ch_byte_reader* br)        \
     {                                                    \

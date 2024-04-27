@@ -6,6 +6,8 @@
 #include "ch_byte_reader.h"
 #include "ch_save.h"
 
+#define CH_ARRAYSIZE(a) (sizeof(a) / sizeof(*(a)))
+
 typedef struct ch_symbol_table {
     const char* symbols;
     int n_symbols;
@@ -51,6 +53,7 @@ static inline ch_err ch_lookup_datamap(ch_parsed_save_ctx* ctx, const char* name
     return CH_ERR_NONE;
 }
 
+// TODO check field type
 static inline ch_err ch_find_field_log_if_dne(ch_parsed_save_ctx* ctx,
                                               const ch_datamap* dm,
                                               const char* field_name,
