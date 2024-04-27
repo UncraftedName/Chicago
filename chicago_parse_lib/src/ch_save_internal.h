@@ -6,7 +6,16 @@
 #include "ch_byte_reader.h"
 #include "ch_save.h"
 
+#include "block_handlers/ch_block_ents.h"
+
 #define CH_ARRAYSIZE(a) (sizeof(a) / sizeof(*(a)))
+
+#define CH_RET_IF_ERR(x)     \
+    do {                     \
+        ch_err _tmp_err = x; \
+        if (_tmp_err)        \
+            return _tmp_err; \
+    } while (0)
 
 typedef struct ch_symbol_table {
     const char* symbols;
@@ -22,6 +31,9 @@ typedef struct ch_parsed_save_ctx {
     ch_byte_reader br;
     ch_symbol_table st;
     ch_parse_save_error* last_error;
+
+    // blocks
+    ch_block_ents block_ents;
 } ch_parsed_save_ctx;
 
 ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...);
@@ -47,8 +59,10 @@ static inline ch_err ch_lookup_datamap(ch_parsed_save_ctx* ctx, const char* name
     assert(name);
     ch_datamap_lookup_entry entry_in = {.name = name};
     const ch_datamap_lookup_entry* entry_out = hashmap_get(ctx->info->datamap_collection->lookup, &entry_in);
-    if (!entry_out)
+    if (!entry_out) {
+        ch_parse_save_log_error(ctx, "datamap '%s' not found in collection", name);
         return CH_ERR_DATAMAP_NOT_FOUND;
+    }
     *dm = entry_out->datamap;
     return CH_ERR_NONE;
 }

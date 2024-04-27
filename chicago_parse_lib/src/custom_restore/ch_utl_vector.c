@@ -38,11 +38,8 @@ ch_err ch_cr_utl_vector_restore_to(ch_parsed_save_ctx* ctx,
     if (field_type == FIELD_EMBEDDED) {
         vec_td.n_elems = 1;
         vec_td.total_size_bytes = embedded_map->ch_size;
-        for (uint32_t i = 0; i < vec->n_elems; i++) {
-            ch_err err = ch_br_restore_recursive(ctx, &vec_dm, CH_UTL_VEC_ELEM_PTR(*vec, i));
-            if (err)
-                return err;
-        }
+        for (uint32_t i = 0; i < vec->n_elems; i++)
+            CH_RET_IF_ERR(ch_br_restore_recursive(ctx, &vec_dm, CH_UTL_VEC_ELEM_PTR(*vec, i)));
         return CH_ERR_NONE;
     } else {
         vec_td.n_elems = (unsigned short)vec->n_elems;
@@ -65,8 +62,6 @@ ch_err ch_cr_utl_vector_restore(ch_parsed_save_ctx* ctx,
 ch_err ch_cr_utl_vector_restore_by_name_to(ch_parsed_save_ctx* ctx, const char* name, ch_cr_utl_vector_restored* vec)
 {
     ch_datamap* dm = NULL;
-    ch_err err = ch_lookup_datamap(ctx, name, &dm);
-    if (err)
-        return err;
+    CH_RET_IF_ERR(ch_lookup_datamap(ctx, name, &dm));
     return ch_cr_utl_vector_restore_to(ctx, FIELD_EMBEDDED, dm, vec);
 }

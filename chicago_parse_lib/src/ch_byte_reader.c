@@ -49,6 +49,72 @@ ch_err ch_br_parse_block(ch_byte_reader* br, const ch_symbol_table* st, ch_block
     return ch_br_read_symbol(br, st, &block->symbol);
 }
 
+static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char* dest, const ch_type_description* td)
+{
+    ch_field_type ft = td->type;
+    ch_byte_reader* br = &ctx->br;
+
+    switch (ft) {
+        case FIELD_STRING:
+        case FIELD_MODELNAME:
+        case FIELD_SOUNDNAME:
+        case FIELD_FUNCTION:
+        case FIELD_MODELINDEX:
+        case FIELD_MATERIALINDEX: {
+            const char* p = (const char*)br->cur;
+            for (size_t i = 0; p < (const char*)br->end && i < td->n_elems; i++) {
+                if (*p) {
+                    size_t len = strnlen(p, (size_t)((const char*)br->end - p));
+                    char** alloc_dest = (char**)dest + i;
+                    *alloc_dest = ch_arena_alloc(ctx->arena, len + 1);
+                    if (!*alloc_dest)
+                        return CH_ERR_OUT_OF_MEMORY;
+                    strncpy(*alloc_dest, p, len + 1);
+                    p += len + 1;
+                } else {
+                    p++;
+                }
+            }
+            break;
+        }
+        case FIELD_FLOAT:
+        case FIELD_VECTOR:
+        case FIELD_QUATERNION:
+        case FIELD_INTEGER:
+        case FIELD_BOOLEAN:
+        case FIELD_SHORT:
+        case FIELD_CHARACTER:
+        case FIELD_COLOR32:
+        case FIELD_CLASSPTR:
+        case FIELD_EHANDLE:
+        case FIELD_EDICT:
+        case FIELD_POSITION_VECTOR:
+        case FIELD_TIME:
+        case FIELD_TICK:
+        case FIELD_VMATRIX:
+        case FIELD_VMATRIX_WORLDSPACE:
+        case FIELD_MATRIX3X4_WORLDSPACE:
+        case FIELD_INTERVAL:
+        case FIELD_VECTOR2D: {
+            assert(td->total_size_bytes);
+            ch_br_read(br, dest, min(td->total_size_bytes, (size_t)(br->end - br->cur)));
+            break;
+        }
+        case FIELD_INPUT:
+        case FIELD_VOID:
+        case FIELD_CUSTOM:
+        case FIELD_EMBEDDED:
+        case FIELD_TYPECOUNT:
+        default:
+            assert(0);
+            return CH_ERR_BAD_FIELD_TYPE;
+    }
+
+    // TODO apply field-specific fixups
+
+    return ctx->br.overflowed ? CH_ERR_READER_OVERFLOWED : CH_ERR_NONE;
+}
+
 ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
                             const char* expected_symbol,
                             const ch_datamap* dm,
@@ -62,9 +128,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
         return CH_ERR_BAD_FIELDS_MARKER;
 
     const char* symbol;
-    ch_err err = ch_br_read_symbol(br, &ctx->st, &symbol);
-    if (err)
-        return err;
+    CH_RET_IF_ERR(ch_br_read_symbol(br, &ctx->st, &symbol));
 
     if (_stricmp(symbol, expected_symbol)) {
         ch_parse_save_log_error(ctx,
@@ -76,15 +140,13 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
     }
 
     // most of the time fields will be stored in the same order as in the datamap
-    int cookie = 0;
+    int cookie = -1;
 
     int n_fields = ch_br_read_32(br);
 
     for (int i = 0; i < n_fields; i++) {
         ch_block block;
-        err = ch_br_parse_block(br, &ctx->st, &block);
-        if (err)
-            return err;
+        CH_RET_IF_ERR(ch_br_parse_block(br, &ctx->st, &block));
 
         // CRestore::FindField
         const ch_type_description* field = NULL;
@@ -110,26 +172,24 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
 
         // read the field!
 
+        ch_byte_reader br_after_field = ch_br_split_skip_swap(br, block.size_bytes);
+
         if (field->type == FIELD_CUSTOM) {
             ch_parse_save_log_error(ctx,
                                     "%s: CUSTOM fields are not implemented yet (%s.%s)",
                                     __FUNCTION__,
                                     dm->class_name,
                                     field->name);
-            ch_br_skip(br, block.size_bytes);
         } else if (field->type == FIELD_EMBEDDED) {
-            for (int j = 0; j < field->n_elems; j++) {
-                err = ch_br_restore_recursive(ctx,
-                                              field->embedded_map,
-                                              class_ptr + field->ch_offset + field->total_size_bytes * j);
-                if (!err)
-                    return err;
-            }
+            for (int j = 0; j < field->n_elems; j++)
+                CH_RET_IF_ERR(ch_br_restore_recursive(ctx,
+                                                      field->embedded_map,
+                                                      class_ptr + field->ch_offset + field->total_size_bytes * j));
         } else {
-            assert(block.size_bytes != 0);
-            ch_br_read(br, class_ptr + field->ch_offset, block.size_bytes);
-            // TODO apply field-specific fixups
+            ch_br_restore_simple_field(ctx, class_ptr + field->ch_offset, field);
         }
+
+        *br = br_after_field;
     }
 
     return CH_ERR_NONE;

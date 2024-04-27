@@ -23,11 +23,8 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
 // CRestore::DoReadAll
 static ch_err ch_br_restore_recursive(ch_parsed_save_ctx* ctx, const ch_datamap* dm, unsigned char* class_ptr)
 {
-    if (dm->base_map) {
-        ch_err err = ch_br_restore_recursive(ctx, dm->base_map, class_ptr);
-        if (err != CH_ERR_NONE)
-            return err;
-    }
+    if (dm->base_map)
+        CH_RET_IF_ERR(ch_br_restore_recursive(ctx, dm->base_map, class_ptr));
     return ch_br_restore_fields(ctx, dm->class_name, dm, class_ptr);
 }
 
@@ -37,9 +34,7 @@ static ch_err ch_br_restore_class_by_name(ch_parsed_save_ctx* ctx,
                                           const char* class_name,
                                           ch_restored_class* restored_class)
 {
-    ch_err ret = ch_lookup_datamap(ctx, class_name, &restored_class->dm);
-    if (ret != CH_ERR_NONE)
-        return ret;
+    CH_RET_IF_ERR(ch_lookup_datamap(ctx, class_name, &restored_class->dm));
     restored_class->data = ch_arena_calloc(ctx->arena, restored_class->dm->ch_size);
     if (!restored_class->data)
         return CH_ERR_OUT_OF_MEMORY;

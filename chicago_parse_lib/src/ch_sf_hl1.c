@@ -1,5 +1,6 @@
 #include "ch_save_internal.h"
 #include "custom_restore/ch_utl_vector.h"
+#include "block_handlers/ch_block_ents.h"
 
 typedef struct ch_hl1_sections {
     int32_t symbol_table_size_bytes;
@@ -8,12 +9,6 @@ typedef struct ch_hl1_sections {
     // TODO what the fuck is this?
     int32_t n_bytes_data;
 } ch_hl1_sections;
-
-ch_err ch_parse_entity_header(ch_parsed_save_ctx* ctx)
-{
-    ch_parse_save_log_error(ctx, "hello from entity handler");
-    return CH_ERR_NONE;
-}
 
 typedef struct ch_block_handler {
     const char* name;
@@ -49,9 +44,7 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
         ch_byte_reader br_st = ch_br_split_skip(br, sections.symbol_table_size_bytes);
         if (br->overflowed)
             return CH_ERR_READER_OVERFLOWED;
-        ch_err err = ch_br_read_symbol_table(&br_st, &ctx->st, sections.n_symbols);
-        if (err)
-            return err;
+        CH_RET_IF_ERR(ch_br_read_symbol_table(&br_st, &ctx->st, sections.n_symbols));
     }
 
     // CSaveRestoreBlockSet::ReadRestoreHeaders
@@ -64,17 +57,11 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
         return CH_ERR_READER_OVERFLOWED;
 
     ch_cr_utl_vector_restored block_headers;
-    ch_err err = ch_cr_utl_vector_restore_by_name_to(ctx, "SaveRestoreBlockHeader_t", &block_headers);
-    if (err)
-        return err;
+    CH_RET_IF_ERR(ch_cr_utl_vector_restore_by_name_to(ctx, "SaveRestoreBlockHeader_t", &block_headers));
 
     const ch_type_description *td_name, *td_loc_header;
-    err = ch_find_field_log_if_dne(ctx, block_headers.embedded_map, "szName", true, &td_name);
-    if (err)
-        return err;
-    err = ch_find_field_log_if_dne(ctx, block_headers.embedded_map, "locHeader", true, &td_loc_header);
-    if (err)
-        return err;
+    CH_RET_IF_ERR(ch_find_field_log_if_dne(ctx, block_headers.embedded_map, "szName", true, &td_name));
+    CH_RET_IF_ERR(ch_find_field_log_if_dne(ctx, block_headers.embedded_map, "locHeader", true, &td_loc_header));
 
     /*
     * Here, the game has its own list of handlers and tries to find the corresponding header in save

@@ -10,6 +10,7 @@ file(
 	GLOB SRC_FILES
 	"${PROJECT_SOURCE_DIR}/src/*.c"
 	"${PROJECT_SOURCE_DIR}/src/custom_restore/*.c"
+	"${PROJECT_SOURCE_DIR}/src/block_handlers/*.c"
 )
 
 add_library(chicago_parse_lib STATIC ${SRC_FILES})
