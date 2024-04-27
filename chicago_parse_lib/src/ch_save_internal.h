@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdlib.h>
+#include <stdarg.h>
 
 #include "ch_byte_reader.h"
 #include "ch_save.h"
@@ -18,7 +19,10 @@ typedef struct ch_parsed_save_ctx {
     ch_arena* arena; // same pointer as in the save data
     ch_byte_reader br;
     ch_symbol_table st;
+    ch_parse_save_error* last_error;
 } ch_parsed_save_ctx;
+
+ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...);
 
 // Creates and allocates symbol_offs if CH_ERR_NONE - make sure to free it!
 // br should be only big enough to fit the symbol table.

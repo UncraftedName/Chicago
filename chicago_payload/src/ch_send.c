@@ -105,7 +105,7 @@ static int ch_recurse_pack_dm(ch_send_datamap_cb_udata* info, const datamap_t* d
                 CH_CHK_MP_PACK(nil(pk));
             CH_CHK_MP_PACK_CSTR(pk, CH_TD_OFF_key);
             CH_CHK_MP_PACK(int(pk, desc->fieldOffset[0]));
-            CH_CHK_MP_PACK_CSTR(pk, CH_TD_FIELD_SIZE_key);
+            CH_CHK_MP_PACK_CSTR(pk, CH_TD_NUM_ELEMS_key);
             CH_CHK_MP_PACK(int(pk, desc->fieldSize));
             CH_CHK_MP_PACK_CSTR(pk, CH_TD_TOTAL_SIZE_key);
             CH_CHK_MP_PACK(int(pk, desc->fieldSizeInBytes));

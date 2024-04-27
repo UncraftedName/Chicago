@@ -261,7 +261,7 @@ static ch_process_result ch_check_dm_schema_cb(const msgpack_object* o, void* us
                             CH_KV_SINGLE(CH_TD_FLAGS, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_EITHER(CH_TD_EXTERNAL_NAME, MSGPACK_OBJECT_STR, MSGPACK_OBJECT_NIL),
                             CH_KV_SINGLE(CH_TD_OFF, MSGPACK_OBJECT_POSITIVE_INTEGER),
-                            CH_KV_SINGLE(CH_TD_FIELD_SIZE, MSGPACK_OBJECT_POSITIVE_INTEGER),
+                            CH_KV_SINGLE(CH_TD_NUM_ELEMS, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_SINGLE(CH_TD_TOTAL_SIZE, MSGPACK_OBJECT_POSITIVE_INTEGER),
                             CH_KV_EITHER(CH_TD_RESTORE_OPS, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
                             CH_KV_EITHER(CH_TD_INPUT_FUNC, MSGPACK_OBJECT_POSITIVE_INTEGER, MSGPACK_OBJECT_NIL),
@@ -508,6 +508,7 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
             ch_td->ch_offset = ch_off;
             ch_td->total_size_bytes = (size_t)td_kv[CH_TD_TOTAL_SIZE].val.via.u64;
             ch_td->flags = (unsigned short)td_kv[CH_TD_FLAGS].val.via.u64;
+            ch_td->n_elems = (unsigned short)td_kv[CH_TD_NUM_ELEMS].val.via.u64;
             ch_td->save_restore_ops_rel_off = (size_t)td_kv[CH_TD_RESTORE_OPS].val.via.u64;
             ch_td->embedded_map_rel_off = ch_get_entry_offset(ctx->dm_hashmap, td_kv[CH_TD_EMBEDDED].val);
             if (ch_td->type == FIELD_CUSTOM)

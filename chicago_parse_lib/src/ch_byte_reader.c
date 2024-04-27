@@ -51,7 +51,7 @@ ch_err ch_br_parse_block(ch_byte_reader* br, const ch_symbol_table* st, ch_block
 
 ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
                             const char* expected_symbol,
-                            const ch_datamap* map,
+                            const ch_datamap* dm,
                             unsigned char* class_ptr)
 {
     // CRestore::ReadFields
@@ -65,9 +65,15 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
     ch_err err = ch_br_read_symbol(br, &ctx->st, &symbol);
     if (err)
         return err;
-    // TODO this is a great place to log errors
-    if (_stricmp(symbol, expected_symbol))
+
+    if (_stricmp(symbol, expected_symbol)) {
+        ch_parse_save_log_error(ctx,
+                                "%s: Error attempting to read symbol %s, expected %s",
+                                __FUNCTION__,
+                                symbol,
+                                expected_symbol);
         return CH_ERR_BAD_SYMBOL;
+    }
 
     // most of the time fields will be stored in the same order as in the datamap
     int cookie = 0;
@@ -83,46 +89,47 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
         // CRestore::FindField
         const ch_type_description* field = NULL;
         size_t n_tests = 0;
-        for (; n_tests < map->n_fields; n_tests++) {
-            cookie = (cookie + 1) % map->n_fields;
-            field = &map->fields[cookie];
+        for (; n_tests < dm->n_fields; n_tests++) {
+            cookie = (cookie + 1) % dm->n_fields;
+            field = &dm->fields[cookie];
             if (!_stricmp(field->name, block.symbol))
                 break;
         }
-        // TODO this is a great place to log errors
-        if (n_tests == map->n_fields)
+
+        if (n_tests == dm->n_fields) {
+            ch_parse_save_log_error(ctx,
+                                    "%s: Failed to find field %s while parsing datamap %s",
+                                    __FUNCTION__,
+                                    block.symbol,
+                                    dm->class_name);
             return CH_ERR_FIELD_NOT_FOUND;
+        }
 
         if (field->type <= FIELD_VOID || field->type >= FIELD_TYPECOUNT)
             return CH_ERR_BAD_FIELD_TYPE;
 
-
-        // TODO TODO this logic is wrong even for basic fields, the block size must be taken into account
-        // TODO TODO looks like type descs really do need an individual elem size (for e.g. vector restore)
+        // read the field!
 
         if (field->type == FIELD_CUSTOM) {
-            // TODO handle custom fields
+            ch_parse_save_log_error(ctx,
+                                    "%s: CUSTOM fields are not implemented yet (%s.%s)",
+                                    __FUNCTION__,
+                                    dm->class_name,
+                                    field->name);
             ch_br_skip(br, block.size_bytes);
         } else if (field->type == FIELD_EMBEDDED) {
-            assert(field->embedded_map); // TODO change to conditional
-            // TODO merge this reader splitting with the custom field reading (not the trivial reading though)
-            ch_byte_reader br_after_block = ch_br_split_skip_swap(br, block.size_bytes);
-            for (size_t j = 0; j < block.size_bytes / field->total_size_bytes; j++) {
-                err = ch_br_restore_recursive(ctx, field->embedded_map, class_ptr + i * field->total_size_bytes);
-                if (err != CH_ERR_NONE)
+            for (int j = 0; j < field->n_elems; j++) {
+                err = ch_br_restore_recursive(ctx,
+                                              field->embedded_map,
+                                              class_ptr + field->ch_offset + field->total_size_bytes * j);
+                if (!err)
                     return err;
             }
-            if (ctx->br.overflowed)
-                return CH_ERR_READER_OVERFLOWED;
-            *br = br_after_block;
         } else {
-            // add a check here to see if the block size is a multiple of the field count
-            ch_br_read(br, class_ptr + field->ch_offset, field->total_size_bytes);
+            assert(block.size_bytes != 0);
+            ch_br_read(br, class_ptr + field->ch_offset, block.size_bytes);
+            // TODO apply field-specific fixups
         }
-
-        // TODO apply fixups (time, ticks, etc.) CRestore::ReadTick has save delay logic
-
-        // ch_br_skip(br, block.size_bytes);
     }
 
     return CH_ERR_NONE;

@@ -54,6 +54,33 @@ size_t ch_field_type_byte_size(ch_field_type ft)
     }
 }
 
+ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...)
+{
+    va_list va;
+    va_start(va, fmt);
+    int len = vsnprintf(NULL, 0, fmt, va);
+    va_end(va);
+    ch_parse_save_error* pse = ch_arena_alloc(ctx->arena, sizeof(ch_parse_save_error) + (len < 0 ? 0 : len + 1));
+    if (!pse)
+        return CH_ERR_OUT_OF_MEMORY;
+    if (len < 0) {
+        pse->err_str = "ERROR ENCODING LOG STRING";
+    } else {
+        pse->err_str = (const char*)(pse + 1);
+        va_start(va, fmt);
+        vsnprintf(pse->err_str, len + 1, fmt, va);
+        va_end(va);
+    }
+    printf("%s\n", pse->err_str);
+    if (ctx->last_error)
+        ctx->last_error->next = pse;
+    ctx->last_error = pse;
+    if (!ctx->data->errors_ll)
+        ctx->data->errors_ll = pse;
+    pse->next = NULL;
+    return CH_ERR_NONE;
+}
+
 ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info* info)
 {
     ch_parsed_save_ctx ctx = {

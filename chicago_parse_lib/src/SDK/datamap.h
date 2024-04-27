@@ -183,7 +183,7 @@ typedef struct ch_datamap {
 typedef struct ch_type_description {
     ch_field_type type;
     unsigned short flags;
-    char _pad[2];
+    unsigned short n_elems;
     CH_PACKED_PTR(const char*, name);
     CH_PACKED_PTR(const char*, external_name);
     size_t game_offset;
