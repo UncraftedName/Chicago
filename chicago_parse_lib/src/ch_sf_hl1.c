@@ -44,18 +44,13 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
     if (err)
         return err;
 
-    // TODO streamline
-    size_t ch_off = 0;
-    for (size_t i = 0; i < block_headers.embedded_map->n_fields; i++) {
-        if (!strcmp(block_headers.embedded_map->fields[i].name, "szName")) {
-            ch_off = block_headers.embedded_map->fields[i].ch_offset;
-            break;
-        }
-    }
-    for (size_t i = 0; i < block_headers.n_elems; i++) {
-        unsigned char* base = block_headers.elems + block_headers.embedded_map->ch_size * i;
-        printf("restore block: %s\n", base + ch_off);
-    }
+    const ch_type_description* td;
+    err = ch_find_field_log_if_dne(ctx, block_headers.embedded_map, "szName", true, &td);
+    if (err)
+        return err;
+
+    for (size_t i = 0; i < block_headers.n_elems; i++)
+        printf("restore block: %s\n", CH_FIELD_AT_PTR(CH_UTL_VEC_ELEM_PTR(block_headers, i), td, const char));
 
     (void)bodies_size_bytes;
 

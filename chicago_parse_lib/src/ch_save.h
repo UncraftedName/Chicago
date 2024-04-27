@@ -130,7 +130,7 @@ typedef struct ch_parse_save_error {
     const char* err_str;
 } ch_parse_save_error;
 
-// make sure to use ch_parsed_save_new to create this class :) 
+// make sure to use ch_parsed_save_new to create this class :)
 typedef struct ch_parsed_save_data {
     ch_tag tag;
     ch_state_file* state_files;
@@ -144,3 +144,11 @@ typedef struct ch_parsed_save_data {
 ch_parsed_save_data* ch_parsed_save_new(void);
 void ch_parsed_save_free(ch_parsed_save_data* parsed_data);
 ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info* info);
+
+ch_err ch_find_field(const ch_datamap* dm,
+                     const char* field_name,
+                     bool recurse_base_classes,
+                     const ch_type_description** field);
+
+#define CH_FIELD_AT_PTR(restored_data, field, type) ((type*)((restored_data) + (field)->ch_offset))
+#define CH_FIELD_AT(restored_data, field, type) (*CH_FIELD_AT_PTR(restored_data, field, type))

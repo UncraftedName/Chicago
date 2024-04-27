@@ -68,7 +68,7 @@ ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...)
     } else {
         pse->err_str = (const char*)(pse + 1);
         va_start(va, fmt);
-        vsnprintf(pse->err_str, len + 1, fmt, va);
+        vsnprintf((char*)pse->err_str, len + 1, fmt, va);
         va_end(va);
     }
     printf("%s\n", pse->err_str);
@@ -95,6 +95,24 @@ ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info
         .arena = parsed_data->_arena,
     };
     return ch_parse_save_ctx(&ctx);
+}
+
+ch_err ch_find_field(const ch_datamap* dm,
+                     const char* field_name,
+                     bool recurse_base_classes,
+                     const ch_type_description** field)
+{
+    if (!field)
+        return CH_ERR_NONE;
+    for (; recurse_base_classes && dm; dm = dm->base_map) {
+        for (size_t i = 0; i < dm->n_fields; i++) {
+            if (!strcmp(dm->fields[i].name, field_name)) {
+                *field = &dm->fields[i];
+                return CH_ERR_NONE;
+            }
+        }
+    }
+    return CH_ERR_FIELD_NOT_FOUND;
 }
 
 ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
@@ -157,16 +175,11 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
     int n_state_files = 0;
 
-    // TODO this probably should be streamlined, it's extremely verbose, would be better to iterate over base classes too
-
     // set the number of state files from the game header
-    ch_restored_class* rdm = &ctx->data->game_header;
-    for (size_t i = 0; i < rdm->dm->n_fields; i++) {
-        if (!strcmp(rdm->dm->fields[i].name, "mapCount")) {
-            n_state_files = *(int*)(rdm->data + rdm->dm->fields[i].ch_offset);
-            break;
-        }
-    }
+    const ch_type_description* td;
+    ch_err find_err = ch_find_field(ctx->data->game_header.dm, "mapCount", true, &td);
+    if (!find_err)
+        n_state_files = CH_FIELD_AT(ctx->data->game_header.data, td, int);
 
     // newer implementation stores the number of state files explicitly after the header, see CSaveRestore::SaveGameSlot
     if (n_state_files == 0)

@@ -50,3 +50,15 @@ static inline ch_err ch_lookup_datamap(ch_parsed_save_ctx* ctx, const char* name
     *dm = entry_out->datamap;
     return CH_ERR_NONE;
 }
+
+static inline ch_err ch_find_field_log_if_dne(ch_parsed_save_ctx* ctx,
+                                              const ch_datamap* dm,
+                                              const char* field_name,
+                                              bool recurse_base_classes,
+                                              const ch_type_description** field)
+{
+    ch_err err = ch_find_field(dm, field_name, recurse_base_classes, field);
+    if (err)
+        ch_parse_save_log_error(ctx, "failed to find filed '%s' in '%s'", field_name, dm->class_name);
+    return err;
+}

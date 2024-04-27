@@ -17,8 +17,8 @@ ch_err ch_cr_utl_vector_restore_to(ch_parsed_save_ctx* ctx,
     if (ctx->br.overflowed)
         return CH_ERR_READER_OVERFLOWED;
 
-    size_t elem_size = field_type == FIELD_EMBEDDED ? embedded_map->ch_size : ch_field_type_byte_size(field_type);
-    vec->elems = ch_arena_calloc(ctx->arena, elem_size * vec->n_elems);
+    vec->elem_size = field_type == FIELD_EMBEDDED ? embedded_map->ch_size : ch_field_type_byte_size(field_type);
+    vec->elems = ch_arena_calloc(ctx->arena, vec->elem_size * vec->n_elems);
     if (!vec->elems)
         return CH_ERR_OUT_OF_MEMORY;
 
@@ -39,14 +39,14 @@ ch_err ch_cr_utl_vector_restore_to(ch_parsed_save_ctx* ctx,
         vec_td.n_elems = 1;
         vec_td.total_size_bytes = embedded_map->ch_size;
         for (uint32_t i = 0; i < vec->n_elems; i++) {
-            ch_err err = ch_br_restore_recursive(ctx, &vec_dm, vec->elems + elem_size * i);
+            ch_err err = ch_br_restore_recursive(ctx, &vec_dm, CH_UTL_VEC_ELEM_PTR(*vec, i));
             if (err)
                 return err;
         }
         return CH_ERR_NONE;
     } else {
         vec_td.n_elems = (unsigned short)vec->n_elems;
-        vec_td.total_size_bytes = elem_size * vec->n_elems;
+        vec_td.total_size_bytes = vec->elem_size * vec->n_elems;
         return ch_br_restore_fields(ctx, "elems", &vec_dm, vec->elems);
     }
 }
