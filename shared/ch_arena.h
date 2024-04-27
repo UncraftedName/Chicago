@@ -5,11 +5,12 @@
 #include <stdlib.h>
 
 typedef struct ch_arena_chunk {
-    struct ch_arena_chunk* next;
+    struct ch_arena_chunk* prev;
 } ch_arena_chunk;
 
 typedef struct ch_arena {
-    ch_arena_chunk* chunk;
+    ch_arena_chunk first_chunk; // must be first
+    ch_arena_chunk* last_chunk;
     char* ptr;
     size_t n_free;
     size_t chunk_size;
@@ -19,8 +20,8 @@ typedef struct ch_arena {
 #endif
 } ch_arena;
 
-#define CH_ARENA_ALIGNMENT (max(sizeof(void*), sizeof(ch_arena_chunk)))
-#define CH_ALIGN_TO(x, n) (((x) + n - 1) & ~(n - 1))
+#define CH_ARENA_ALIGNMENT sizeof(void*)
+#define CH_ALIGN_TO(x, n) (((x) + (n)-1) & ~((n)-1))
 #define CH_ARENA_ALIGN(x) CH_ALIGN_TO(x, CH_ARENA_ALIGNMENT)
 
 static ch_arena* ch_arena_new(size_t init_chunk_size)
@@ -31,7 +32,8 @@ static ch_arena* ch_arena_new(size_t init_chunk_size)
     ch_arena* a = malloc(first_alloc_size);
     if (!a)
         return NULL;
-    a->chunk = (ch_arena_chunk*)a;
+    a->first_chunk.prev = NULL;
+    a->last_chunk = &a->first_chunk;
     a->ptr = (char*)(a + 1);
     a->n_free = init_chunk_size;
     a->chunk_size = init_chunk_size;
@@ -44,11 +46,12 @@ static ch_arena* ch_arena_new(size_t init_chunk_size)
 
 static void ch_arena_free(ch_arena* arena)
 {
-    for (bool last = false; arena && !last;) {
-        ch_arena_chunk* cur = arena->chunk;
-        last = (void*)cur == (void*)arena;
-        arena->chunk = arena->chunk->next;
-        free(cur);
+    if (!arena)
+        return;
+    for (ch_arena_chunk* chunk = arena->last_chunk; chunk;) {
+        ch_arena_chunk* del_chunk = chunk;
+        chunk = chunk->prev;
+        free(del_chunk);
     }
 }
 
@@ -56,19 +59,18 @@ static void* ch_arena_alloc(ch_arena* arena, size_t n)
 {
     n = max(n, 1); // make sure size of 0 doesn't return null
     if (arena->n_free < n) {
-        size_t next_chunk_size = arena->chunk_size * 2;
-        n = CH_ARENA_ALIGN(n + sizeof(ch_arena_chunk));
-        while (next_chunk_size < n)
-            next_chunk_size *= 2;
+        arena->chunk_size = arena->chunk_size * 2;
+        size_t min_alloc_size = CH_ARENA_ALIGN(n + sizeof(ch_arena_chunk));
+        while (arena->chunk_size < min_alloc_size)
+            arena->chunk_size *= 2;
         // allocate new chunk
-        ch_arena_chunk* new_chunk = malloc(next_chunk_size);
+        ch_arena_chunk* new_chunk = malloc(arena->chunk_size);
         if (!new_chunk)
             return NULL;
-        new_chunk->next = arena->chunk;
-        arena->chunk = new_chunk;
+        new_chunk->prev = arena->last_chunk;
+        arena->last_chunk = new_chunk;
         arena->ptr = (char*)(new_chunk + 1);
-        arena->n_free = next_chunk_size - sizeof(ch_arena_chunk);
-        arena->chunk_size = next_chunk_size;
+        arena->n_free = arena->chunk_size - sizeof(ch_arena_chunk);
 #ifndef NDEBUG
         arena->n_chunks++;
 #endif
