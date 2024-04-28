@@ -102,6 +102,7 @@ ch_err ch_find_field(const ch_datamap* dm,
                      bool recurse_base_classes,
                      const ch_type_description** field)
 {
+    assert(field_name);
     if (!field)
         return CH_ERR_NONE;
     for (; recurse_base_classes && dm; dm = dm->base_map) {
@@ -114,6 +115,44 @@ ch_err ch_find_field(const ch_datamap* dm,
     }
     *field = NULL;
     return CH_ERR_FIELD_NOT_FOUND;
+}
+
+ch_err ch_find_field_log_if_dne(ch_parsed_save_ctx* ctx,
+                                const ch_datamap* dm,
+                                const char* field_name,
+                                bool recurse_base_classes,
+                                const ch_type_description** field,
+                                ch_field_type expected_field_type)
+{
+    assert(field_name && field);
+    ch_err err = ch_find_field(dm, field_name, recurse_base_classes, field);
+    if (err) {
+        CH_PARSER_LOG_ERR(ctx, "failed to find filed '%s' in datamap '%s'", field_name, dm->class_name);
+        return err;
+    } else if ((**field).type != expected_field_type) {
+        CH_PARSER_LOG_ERR(ctx,
+                          "found field '%s' in datamap '%s' but it has type %d, expected %d",
+                          (**field).name,
+                          dm->class_name,
+                          (**field).type,
+                          expected_field_type);
+        return CH_ERR_BAD_FIELD_TYPE;
+    }
+    return CH_ERR_NONE;
+}
+
+ch_err ch_lookup_datamap(ch_parsed_save_ctx* ctx, const char* name, const ch_datamap** dm)
+{
+    assert(name && dm);
+    ch_datamap_lookup_entry entry_in = {.name = name};
+    const ch_datamap_lookup_entry* entry_out = hashmap_get(ctx->info->datamap_collection->lookup, &entry_in);
+    if (!entry_out) {
+        CH_PARSER_LOG_ERR(ctx, "datamap '%s' not found in collection", name);
+        *dm = NULL;
+        return CH_ERR_DATAMAP_NOT_FOUND;
+    }
+    *dm = entry_out->datamap;
+    return CH_ERR_NONE;
 }
 
 ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
@@ -168,13 +207,13 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
     // determine number of state files
 
-    int n_state_files = 0;
+    int32_t n_state_files = 0;
 
     // set the number of state files from the game header
     const ch_type_description* td;
     ch_err find_err = ch_find_field(ctx->data->game_header.dm, "mapCount", true, &td);
     if (!find_err)
-        n_state_files = CH_FIELD_AT(ctx->data->game_header.data, td, int);
+        n_state_files = CH_FIELD_AT(ctx->data->game_header.data, td, int32_t);
 
     // newer implementation stores the number of state files explicitly after the header, see CSaveRestore::SaveGameSlot
     if (n_state_files == 0)
@@ -223,6 +262,7 @@ ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
 
     if (!strncmp(sf->name + i, ".hl1", 4)) {
         sf->sf_type = CH_SF_SAVE_DATA;
+        ctx->sf_save_data = &sf->sf_save_data;
         return ch_parse_hl1(ctx, &sf->sf_save_data);
     } else if (!strncmp(sf->name + i, ".hl2", 4)) {
         sf->sf_type = CH_SF_ADJACENT_CLIENT_STATE;

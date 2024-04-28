@@ -6,8 +6,6 @@
 #include "ch_byte_reader.h"
 #include "ch_save.h"
 
-#include "block_handlers/ch_block_ents.h"
-
 #define CH_ARRAYSIZE(a) (sizeof(a) / sizeof(*(a)))
 
 #define CH_RET_IF_ERR(x)     \
@@ -31,12 +29,17 @@ typedef struct ch_parsed_save_ctx {
     ch_byte_reader br;
     ch_symbol_table st;
     ch_parse_save_error* last_error;
-
-    // blocks
-    ch_block_ents block_ents;
+    // some stuff is stored relative to a 'base' in the file and needs to be saved across function calls
+    ch_byte_reader br_cur_base;
+    ch_sf_save_data* sf_save_data;
 } ch_parsed_save_ctx;
 
 ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...);
+
+// This will override any error that we were about to return, but that's okay since
+// the only error the logging function can return is OOM and that's more critical.
+#define CH_PARSER_LOG_ERR(ctx, fmt, ...) \
+    CH_RET_IF_ERR(ch_parse_save_log_error(ctx, "[%s]: " fmt ".", __FUNCTION__, __VA_ARGS__))
 
 // Creates and allocates symbol_offs if CH_ERR_NONE - make sure to free it!
 // br should be only big enough to fit the symbol table.
@@ -54,28 +57,11 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf);
 ch_err ch_parse_hl2(ch_parsed_save_ctx* ctx, ch_sf_adjacent_client_state* sf);
 ch_err ch_parse_hl3(ch_parsed_save_ctx* ctx, ch_sf_entity_patch* sf);
 
-static inline ch_err ch_lookup_datamap(ch_parsed_save_ctx* ctx, const char* name, const ch_datamap** dm)
-{
-    assert(name);
-    ch_datamap_lookup_entry entry_in = {.name = name};
-    const ch_datamap_lookup_entry* entry_out = hashmap_get(ctx->info->datamap_collection->lookup, &entry_in);
-    if (!entry_out) {
-        ch_parse_save_log_error(ctx, "datamap '%s' not found in collection", name);
-        return CH_ERR_DATAMAP_NOT_FOUND;
-    }
-    *dm = entry_out->datamap;
-    return CH_ERR_NONE;
-}
+ch_err ch_lookup_datamap(ch_parsed_save_ctx* ctx, const char* name, const ch_datamap** dm);
 
-// TODO check field type
-static inline ch_err ch_find_field_log_if_dne(ch_parsed_save_ctx* ctx,
-                                              const ch_datamap* dm,
-                                              const char* field_name,
-                                              bool recurse_base_classes,
-                                              const ch_type_description** field)
-{
-    ch_err err = ch_find_field(dm, field_name, recurse_base_classes, field);
-    if (err)
-        ch_parse_save_log_error(ctx, "failed to find filed '%s' in '%s'", field_name, dm->class_name);
-    return err;
-}
+ch_err ch_find_field_log_if_dne(ch_parsed_save_ctx* ctx,
+                                const ch_datamap* dm,
+                                const char* field_name,
+                                bool recurse_base_classes,
+                                const ch_type_description** field,
+                                ch_field_type expected_field_type);

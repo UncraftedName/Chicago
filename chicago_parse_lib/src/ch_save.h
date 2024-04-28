@@ -70,8 +70,31 @@ typedef struct ch_restored_class {
     unsigned char* data;
 } ch_restored_class;
 
+typedef struct ch_restored_class_arr {
+    const ch_datamap* dm;
+    size_t n_elems;
+    // array of restored classes continuously in memory
+    // i.e. {data + dm->ch_size * n} will give the nth class
+    unsigned char* data;
+} ch_restored_class_arr;
+
+// helper macros for ch_restored_class_arr
+#define CH_RCA_ELEM_DATA(rca, n) (assert((size_t)n < (rca).n_elems), ((rca).data + (rca).dm->ch_size * (n)))
+#define CH_RCA_DATA_SIZE(rca) ((rca).dm->ch_size * (rca).n_elems)
+
+typedef struct ch_block_entities {
+    ch_restored_class_arr entity_table;
+    ch_restored_class* entities; // has entity_table.n_elems entities
+} ch_block_entities;
+
 typedef struct ch_sf_save_data {
     ch_tag tag;
+    ch_restored_class save_header;
+    ch_restored_class_arr adjacent_levels;
+    ch_restored_class_arr light_styles;
+    struct {
+        ch_block_entities entities;
+    } blocks;
 } ch_sf_save_data;
 
 typedef struct ch_sf_adjacent_client_state {
@@ -150,5 +173,5 @@ ch_err ch_find_field(const ch_datamap* dm,
                      bool recurse_base_classes,
                      const ch_type_description** field);
 
-#define CH_FIELD_AT_PTR(restored_data, field, type) ((type*)((restored_data) + (field)->ch_offset))
-#define CH_FIELD_AT(restored_data, field, type) (*CH_FIELD_AT_PTR(restored_data, field, type))
+#define CH_FIELD_AT_PTR(restored_data, td_ptr, c_type) ((c_type*)((restored_data) + (td_ptr)->ch_offset))
+#define CH_FIELD_AT(restored_data, td_ptr, c_type) (*CH_FIELD_AT_PTR(restored_data, td_ptr, c_type))

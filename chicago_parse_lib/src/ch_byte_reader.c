@@ -96,8 +96,9 @@ static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char*
         case FIELD_MATRIX3X4_WORLDSPACE:
         case FIELD_INTERVAL:
         case FIELD_VECTOR2D: {
-            assert(td->total_size_bytes);
-            ch_br_read(br, dest, min(td->total_size_bytes, (size_t)(br->end - br->cur)));
+            size_t bytes_avail = (size_t)(br->end - br->cur);
+            assert(td->total_size_bytes && bytes_avail >= td->total_size_bytes);
+            ch_br_read(br, dest, min(td->total_size_bytes, bytes_avail));
             break;
         }
         case FIELD_INPUT:
@@ -131,11 +132,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
     CH_RET_IF_ERR(ch_br_read_symbol(br, &ctx->st, &symbol));
 
     if (_stricmp(symbol, expected_symbol)) {
-        ch_parse_save_log_error(ctx,
-                                "%s: Error attempting to read symbol %s, expected %s",
-                                __FUNCTION__,
-                                symbol,
-                                expected_symbol);
+        CH_PARSER_LOG_ERR(ctx, "error attempting to read symbol %s, expected %s", symbol, expected_symbol);
         return CH_ERR_BAD_SYMBOL;
     }
 
@@ -159,11 +156,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
         }
 
         if (n_tests == dm->n_fields) {
-            ch_parse_save_log_error(ctx,
-                                    "%s: Failed to find field %s while parsing datamap %s",
-                                    __FUNCTION__,
-                                    block.symbol,
-                                    dm->class_name);
+            CH_PARSER_LOG_ERR(ctx, "failed to find field %s while parsing datamap %s", block.symbol, dm->class_name);
             return CH_ERR_FIELD_NOT_FOUND;
         }
 
@@ -175,11 +168,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
         ch_byte_reader br_after_field = ch_br_split_skip_swap(br, block.size_bytes);
 
         if (field->type == FIELD_CUSTOM) {
-            ch_parse_save_log_error(ctx,
-                                    "%s: CUSTOM fields are not implemented yet (%s.%s)",
-                                    __FUNCTION__,
-                                    dm->class_name,
-                                    field->name);
+            CH_PARSER_LOG_ERR(ctx, "CUSTOM fields are not implemented yet (%s.%s)", dm->class_name, field->name);
         } else if (field->type == FIELD_EMBEDDED) {
             for (int j = 0; j < field->n_elems; j++)
                 CH_RET_IF_ERR(ch_br_restore_recursive(ctx,
