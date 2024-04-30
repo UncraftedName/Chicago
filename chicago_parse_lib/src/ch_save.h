@@ -82,9 +82,19 @@ typedef struct ch_restored_class_arr {
 #define CH_RCA_ELEM_DATA(rca, n) (assert((size_t)n < (rca).n_elems), ((rca).data + (rca).dm->ch_size * (n)))
 #define CH_RCA_DATA_SIZE(rca) ((rca).dm->ch_size * (rca).n_elems)
 
+
+typedef struct ch_restored_entity {
+    ch_restored_class class_info;
+    // TODO these are more complicated than just simple restored classes, make special structs for them
+    // TODO should be possible to check the vtable of entities and check if there's some custom restore funcs, probably too much effort...
+    // TODO liquid portals lololol
+    ch_restored_class ai_header; // only if the entity inherits from CAI_BaseNPC
+    ch_restored_class speaker_info; // only if the entity inherits from CSpeaker
+} ch_restored_entity;
+
 typedef struct ch_block_entities {
     ch_restored_class_arr entity_table;
-    ch_restored_class* entities; // has entity_table.n_elems entities
+    ch_restored_entity* entities; // has entity_table.n_elems entities
 } ch_block_entities;
 
 typedef struct ch_sf_save_data {
@@ -172,6 +182,8 @@ ch_err ch_find_field(const ch_datamap* dm,
                      const char* field_name,
                      bool recurse_base_classes,
                      const ch_type_description** field);
+
+bool ch_dm_inherts_from(const ch_datamap* dm, const char* base_name);
 
 #define CH_FIELD_AT_PTR(restored_data, td_ptr, c_type) ((c_type*)((restored_data) + (td_ptr)->ch_offset))
 #define CH_FIELD_AT(restored_data, td_ptr, c_type) (*CH_FIELD_AT_PTR(restored_data, td_ptr, c_type))

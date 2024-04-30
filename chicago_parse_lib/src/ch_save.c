@@ -117,6 +117,15 @@ ch_err ch_find_field(const ch_datamap* dm,
     return CH_ERR_FIELD_NOT_FOUND;
 }
 
+bool ch_dm_inherts_from(const ch_datamap* dm, const char* base_name)
+{
+    if (!dm)
+        return false;
+    if (!strcmp(dm->class_name, base_name))
+        return true;
+    return ch_dm_inherts_from(dm->base_map, base_name);
+}
+
 ch_err ch_find_field_log_if_dne(ch_parsed_save_ctx* ctx,
                                 const ch_datamap* dm,
                                 const char* field_name,

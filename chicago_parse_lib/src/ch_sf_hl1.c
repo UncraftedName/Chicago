@@ -90,7 +90,9 @@ static ch_err ch_restore_block_headers(ch_parsed_save_ctx* ctx, ch_block_body_in
             continue;
         }
         ch_err header_err = handler->fn_parse_header(ctx);
-        if (header_err) {
+        if (header_err == CH_ERR_OUT_OF_MEMORY) {
+            return header_err;
+        } else if (header_err) {
             CH_PARSER_LOG_ERR(ctx, "error parsing header for block '%s': %s", header_name, ch_err_strs[header_err]);
             continue;
         }
@@ -159,7 +161,9 @@ static ch_err ch_restore_block_bodies(ch_parsed_save_ctx* ctx, const ch_block_bo
             continue;
         }
         ch_err err = ch_block_handlers[i].fn_parse_body(ctx);
-        if (err) {
+        if (err == CH_ERR_OUT_OF_MEMORY) {
+            return err;
+        } else if (err) {
             CH_PARSER_LOG_ERR(ctx,
                               "error parsing header for block '%s': %s",
                               ch_block_handlers[i].name,
@@ -194,8 +198,6 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
             return CH_ERR_READER_OVERFLOWED;
         CH_RET_IF_ERR(ch_br_read_symbol_table(&br_st, &ctx->st, sections.n_symbols));
     }
-
-    
 
     ch_block_body_info body_info = {0};
     CH_RET_IF_ERR(ch_restore_block_headers(ctx, &body_info));
