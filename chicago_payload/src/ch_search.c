@@ -110,14 +110,51 @@ void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scrat
     assert(i == out->len);
 }
 
-bool ch_pattern_match(ch_ptr mem, ch_pattern pattern, ch_mod_sec mod_sec_text)
+bool ch_pattern_match(ch_ptr mem, ch_mod_sec mod_sec_text, ch_pattern pattern)
 {
     if (!ch_ptr_in_sec(mem, mod_sec_text, pattern.len))
         return false;
     for (size_t i = 0; i < pattern.len; i++)
-        if (!(pattern.wildmask[i / 8] & (1 << (i & 7))) && pattern.bytes[i] != mem[i])
+        if (pattern.bytes[i] != mem[i] && !(pattern.wildmask[i / 8] & (1 << (i & 7))))
             return false;
     return true;
+}
+
+int ch_pattern_multi_match(ch_ptr mem, ch_mod_sec mod_sec_text, ch_pattern* patterns, size_t n_patterns)
+{
+    for (int i = 0; i < (int)n_patterns; i++)
+        if (ch_pattern_match(mem, mod_sec_text, patterns[i]))
+            return i;
+    return CH_MULTI_PATTERN_NOT_FOUND;
+}
+
+int ch_pattern_multi_search(ch_ptr* found_mem,
+                            ch_mod_sec mod_sec_text,
+                            ch_pattern* patterns,
+                            size_t n_patterns,
+                            bool ensure_unique)
+{
+    if (found_mem)
+        *found_mem = NULL;
+    for (ch_ptr mem = mod_sec_text.start; mem < mod_sec_text.start + mod_sec_text.len; mem++) {
+        int i = ch_pattern_multi_match(mem, mod_sec_text, patterns, n_patterns);
+        if (i != CH_MULTI_PATTERN_NOT_FOUND) {
+            if (ensure_unique && mem + 1 < mod_sec_text.start + mod_sec_text.len) {
+                ch_mod_sec dummy_sec = {
+                    .start = mem + 1,
+                    .len = CH_PTR_DIFF(mod_sec_text.start + mod_sec_text.len, mem + 1),
+                };
+                if (ch_pattern_multi_search(NULL, dummy_sec, patterns, n_patterns, false) !=
+                    CH_MULTI_PATTERN_NOT_FOUND) {
+                    return CH_MULTI_PATTERN_DUP;
+                }
+            }
+            if (found_mem)
+                *found_mem = mem;
+            return i;
+        }
+    }
+    return CH_MULTI_PATTERN_NOT_FOUND;
 }
 
 void ch_get_module_info(ch_send_ctx* ctx, ch_search_ctx* sc)
@@ -163,7 +200,7 @@ static bool _find_ctor_cb(ch_ptr match, void* user_data)
 
     if (info->cvar_ctor_out < info->server_mod_text.start)
         return false;
-    if (!ch_pattern_match(info->cvar_ctor_out, info->ctor_pattern, info->server_mod_text))
+    if (!ch_pattern_match(info->cvar_ctor_out, info->server_mod_text, info->ctor_pattern))
         return false;
     if (*(ch_ptr*)(info->cvar_ctor_out + 5) != info->cvar_desc_str)
         return false;
@@ -235,72 +272,78 @@ void ch_find_entity_factory_cvar(ch_send_ctx* ctx, ch_search_ctx* sc)
     sc->dump_entity_factories_impl = cb_info.cvar_impl_out;
 }
 
-typedef struct _find_static_inits_cb_info {
-    ch_mod_info* mod;
-    const ch_ptr* table_start_out;
-    size_t table_len_out;
-} _find_static_inits_cb_info;
-
-static bool _find_static_inits_cb(ch_ptr match, void* user_data)
+void ch_find_static_inits(ch_send_ctx* ctx, ch_search_ctx* sc)
 {
-    _find_static_inits_cb_info* info = user_data;
-    ch_mod_sec mod_rdata = info->mod->sections[CH_SEC_RDATA];
-    ch_mod_sec mod_text = info->mod->sections[CH_SEC_TEXT];
+    // we're using patterns, I don't care :)
+    struct ch_pattern_info {
+        const char* str;
+        const char* name;
+        unsigned char scratch[64]; // big enough to hold the biggest one
+        size_t offset_to_static_inits_start_in_pattern;
+        size_t offset_to_static_inits_end_in_pattern;
+    } patterns_infos[] = {
+        {
+            .str = "BE ?? ?? ?? ?? 8B C6 BF ?? ?? ?? ?? 3B C7 59 73 0F 8B 06 85 C0 74 02 FF D0 83 C6 04 3B F7 72 F1",
+            .name = "vs2005",
+            .offset_to_static_inits_start_in_pattern = 1,
+            .offset_to_static_inits_end_in_pattern = 8,
+        },
+        {
+            .str = "E8 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? E8 ?? ?? ?? ?? 59 59 85 C0 75 ?? 68 ?? ?? ?? ?? E8 ?? "
+                   "?? ?? ?? C7 04 24 ?? ?? ?? ?? 68 ?? ?? ?? ?? E8 ?? ?? ?? ??",
+            .name = "vs2008/2010/2012",
+            .offset_to_static_inits_start_in_pattern = 44,
+            .offset_to_static_inits_end_in_pattern = 39,
+        },
+    };
 
-    /*
-    * We expect to land somewhere in the static init table. The table is in rdata,
-    * and it's just a table that points to a bunch of static init functions surrounded
-    * by null terminators. Scan before & after the match, check that each function
-    * pointer points to somewhere in the text section.
-    */
-    const int direction[] = {-1, 1};
-    int n_funcs = 0;
-    for (int i = 0; i < 2; i++) {
-        const ch_ptr* func_pptr = (ch_ptr*)match;
-        for (;; n_funcs++) {
-            func_pptr += direction[i];
-            if (!ch_ptr_in_sec((ch_ptr)func_pptr, mod_rdata, sizeof(ch_ptr)))
-                return false;
-            if (!*func_pptr)
-                break;
-            if (!ch_ptr_in_sec(*func_pptr, mod_text, 0))
-                return false;
+    ch_pattern patterns[ARRAYSIZE(patterns_infos)];
+
+    for (size_t i = 0; i < ARRAYSIZE(patterns); i++)
+        ch_parse_pattern_str(patterns_infos[i].str, &patterns[i], patterns_infos[i].scratch);
+
+    for (size_t i = 0; i < CH_MOD_COUNT; i++) {
+
+        ch_ptr mod_base = sc->mods[i].base;
+        const char* mod_name = ch_mod_names[i];
+        ch_mod_sec sec_text = sc->mods[i].sections[CH_SEC_TEXT];
+        ch_mod_sec sec_rdata = sc->mods[i].sections[CH_SEC_RDATA];
+
+        ch_ptr mem;
+        int search_idx = ch_pattern_multi_search(&mem, sec_text, patterns, ARRAYSIZE(patterns), true);
+        if (search_idx < 0) {
+            CH_PAYLOAD_LOG_ERR(ctx,
+                               "failed to find static init caller in %s%s",
+                               mod_name,
+                               search_idx == CH_MULTI_PATTERN_NOT_FOUND ? "" : " (multiple matches)");
         }
-        if (i == 0)
-            info->table_start_out = func_pptr + 1;
-        else
-            info->table_len_out = CH_PTR_DIFF((ch_ptr)(func_pptr - 1), info->table_start_out) / sizeof(ch_ptr);
+        struct ch_pattern_info* info = &patterns_infos[search_idx];
+
+        CH_PAYLOAD_LOG_INFO(ctx,
+                            "found static init caller at %s[0x%08X] using the '%s' pattern",
+                            mod_name,
+                            CH_PTR_DIFF(mem, mod_base),
+                            info->name);
+
+        ch_ptr* static_inits_start = *(ch_ptr**)(mem + info->offset_to_static_inits_start_in_pattern);
+        ch_ptr* static_inits_end = *(ch_ptr**)(mem + info->offset_to_static_inits_end_in_pattern);
+
+        if (!ch_ptr_in_sec((ch_ptr)static_inits_start, sec_rdata, sizeof(ch_ptr)) ||
+            !ch_ptr_in_sec((ch_ptr)static_inits_end, sec_rdata, sizeof(ch_ptr))) {
+            CH_PAYLOAD_LOG_ERR(ctx, "bogus static init pointers found in '%s'", mod_name);
+        }
+
+        sc->mods[i].static_inits = static_inits_start;
+        sc->mods[i].n_static_inits = static_inits_start > static_inits_end
+                                       ? 0
+                                       : CH_PTR_DIFF(static_inits_end, static_inits_start) / sizeof(ch_ptr);
+
+        CH_PAYLOAD_LOG_INFO(ctx,
+                            "found %d static init functions at %s[0x%08X]",
+                            (int)sc->mods[i].n_static_inits,
+                            mod_name,
+                            CH_PTR_DIFF(sc->mods[i].static_inits, mod_base));
     }
-    return n_funcs > 5; // arbitrary threshold - should have at least this many static inits
-}
-
-void ch_find_static_inits_from_single(struct ch_send_ctx* ctx,
-                                      ch_search_ctx* sc,
-                                      ch_game_module mod_idx,
-                                      ch_ptr static_init_func)
-{
-    ch_mod_info* mod = &sc->mods[mod_idx];
-    ch_mod_sec mod_rdata = mod->sections[CH_SEC_RDATA];
-    _find_static_inits_cb_info cb_info = {.mod = mod};
-    ch_ptr found_table = ch_memmem_cb(mod_rdata.start,
-                                      mod_rdata.len,
-                                      (ch_ptr)&static_init_func,
-                                      sizeof(ch_ptr),
-                                      _find_static_inits_cb,
-                                      &cb_info);
-
-    if (!found_table)
-        ch_send_err_and_exit(ctx, "Failed to find static init table in %s.", ch_mod_names[mod_idx]);
-
-    assert(cb_info.table_start_out && cb_info.table_len_out);
-    ch_send_log_info(ctx,
-                     "Found %lu static init functions at %s[0x%08X].",
-                     cb_info.table_len_out,
-                     ch_mod_names[mod_idx],
-                     CH_PTR_DIFF(cb_info.table_start_out, mod->base));
-
-    mod->static_inits = cb_info.table_start_out;
-    mod->n_static_inits = cb_info.table_len_out;
 }
 
 bool ch_datamap_looks_valid(const datamap_t* dm, const ch_mod_info* mod)
@@ -383,7 +426,7 @@ void ch_iterate_datamaps(ch_send_ctx* ctx,
     bool any = false;
     ch_mod_info* mod = &sc->mods[mod_idx];
     for (size_t i = 0; i < mod->n_static_inits; i++) {
-        if (!ch_pattern_match(mod->static_inits[i], datadescinit_pattern, mod->sections[CH_SEC_TEXT]))
+        if (!ch_pattern_match(mod->static_inits[i], mod->sections[CH_SEC_TEXT], datadescinit_pattern))
             continue;
         const datamap_t* const* dm = *(const datamap_t***)(mod->static_inits[i] + 11);
         if (!ch_ptr_in_sec((ch_ptr)dm, mod->sections[CH_SEC_DATA], sizeof(ch_ptr)))

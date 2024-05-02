@@ -20,6 +20,9 @@ typedef struct ch_send_ctx {
 void ch_send_wave(ch_send_ctx* ctx, ch_comm_msg_type type);
 void ch_send_log_info(ch_send_ctx* ctx, const char* fmt, ...);
 
+#define CH_PAYLOAD_LOG_INFO(ctx, fmt, ...) ch_send_log_info(ctx, "[%s]: " fmt ".", __FUNCTION__, __VA_ARGS__)
+#define CH_PAYLOAD_LOG_ERR(ctx, fmt, ...) ch_send_err_and_exit(ctx, "[%s]: " fmt ".", __FUNCTION__, __VA_ARGS__)
+
 typedef struct ch_send_datamap_cb_udata {
     ch_send_ctx* send_ctx;
     ch_search_ctx* sc;

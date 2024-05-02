@@ -9,6 +9,7 @@
 #include "ch_payload_comm_shared.h"
 #include "SDK/datamap.h"
 
+// TODO remove this?
 #if 0
 #define CH_PL_PRINTF(...) printf("[ch_payload] " __VA_ARGS__)
 #else
@@ -84,19 +85,25 @@ typedef struct ch_pattern {
 // create pattern from string, scratch must have enough space for all data
 void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scratch);
 
-bool ch_pattern_match(ch_ptr mem, ch_pattern pattern, ch_mod_sec mod_sec_text);
+bool ch_pattern_match(ch_ptr mem, ch_mod_sec mod_sec_text, ch_pattern pattern);
+
+int ch_pattern_multi_match(ch_ptr mem, ch_mod_sec mod_sec_text, ch_pattern* patterns, size_t n_patterns);
+
+int ch_pattern_multi_search(ch_ptr* found_mem,
+                            ch_mod_sec mod_sec_text,
+                            ch_pattern* patterns,
+                            size_t n_patterns,
+                            bool ensure_unique);
+
+#define CH_MULTI_PATTERN_NOT_FOUND -1
+#define CH_MULTI_PATTERN_DUP -2
 
 // fill the search content, on fail send an error
 void ch_get_module_info(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
 void ch_find_entity_factory_cvar(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
-// find the static init table from a single static init function
-// TODO this doesn't find the entire table if it has nulls, prolly need to go through __cinit
-void ch_find_static_inits_from_single(struct ch_send_ctx* ctx,
-                                      ch_search_ctx* sc,
-                                      ch_game_module mod_idx,
-                                      ch_ptr static_init_func);
+void ch_find_static_inits(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
 void ch_iterate_datamaps(struct ch_send_ctx* ctx,
                          ch_search_ctx* sc,

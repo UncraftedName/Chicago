@@ -49,23 +49,14 @@ void __stdcall main(HINSTANCE h_mod)
     ch_get_module_info(ctx, &sc);
 
     ch_find_entity_factory_cvar(ctx, &sc);
-    ch_find_static_inits_from_single(ctx, &sc, CH_MOD_SERVER, sc.dump_entity_factories_ctor);
+    ch_find_static_inits(ctx, &sc);
 
-    ch_send_datamap_cb_udata dm_cb = {.send_ctx = ctx, .sc = &sc, .mod_idx = CH_MOD_SERVER};
+    ch_send_datamap_cb_udata dm_cb = {.send_ctx = ctx, .sc = &sc};
 
-    ch_iterate_datamaps(ctx, &sc, CH_MOD_SERVER, ch_send_datamap_cb, &dm_cb);
-
-    // TODO VPHYSICS & ENGINE ARE HARDCODED
-
-    dm_cb.mod_idx = CH_MOD_VPHYSICS;
-    sc.mods[CH_MOD_VPHYSICS].static_inits = (ch_ptr*)(sc.mods[CH_MOD_VPHYSICS].base + 0xb2184);
-    sc.mods[CH_MOD_VPHYSICS].n_static_inits = 53;
-    ch_iterate_datamaps(ctx, &sc, CH_MOD_VPHYSICS, ch_send_datamap_cb, &dm_cb);
-
-    dm_cb.mod_idx = CH_MOD_ENGINE;
-    sc.mods[CH_MOD_ENGINE].static_inits = (ch_ptr*)(sc.mods[CH_MOD_ENGINE].base + 0x2a4668);
-    sc.mods[CH_MOD_ENGINE].n_static_inits = 1788;
-    ch_iterate_datamaps(ctx, &sc, CH_MOD_ENGINE, ch_send_datamap_cb, &dm_cb);
+    for (size_t i = 0; i < CH_MOD_COUNT; i++) {
+        dm_cb.mod_idx = i;
+        ch_iterate_datamaps(ctx, &sc, i, ch_send_datamap_cb, &dm_cb);
+    }
 
     ch_send_wave(ctx, CH_MSG_GOODBYE);
     ch_clean_exit(ctx, 0);

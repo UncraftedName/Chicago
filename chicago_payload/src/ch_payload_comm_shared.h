@@ -20,7 +20,7 @@
 #define CH_PIPE_INIT_BUF_SIZE (1024 * 128)
 
 typedef enum ch_game_module {
-    CH_MOD_CLIENT,
+    // CH_MOD_CLIENT, // TODO FUCK FUCK FUCK FUCK
     CH_MOD_SERVER,
     CH_MOD_ENGINE,
     CH_MOD_VPHYSICS,
@@ -28,7 +28,7 @@ typedef enum ch_game_module {
 } ch_game_module;
 
 static const char* const ch_mod_names[CH_MOD_COUNT] = {
-    "client.dll",
+    // "client.dll",
     "server.dll",
     "engine.dll",
     "vphysics.dll",
