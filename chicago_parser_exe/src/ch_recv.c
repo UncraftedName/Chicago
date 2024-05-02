@@ -301,12 +301,13 @@ static ch_process_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void*
         return CH_PROCESS_OK;
 
     msgpack_object_str name = dm.ptr[CH_DM_NAME].val.via.str;
-    ch_game_module mod_idx = dm.ptr[CH_DM_MODULE].val.via.u64;
+    msgpack_object_str mod_name = dm.ptr[CH_DM_MODULE].val.via.str;
     CH_LOG_ERROR(udata->ctx,
-                 "Two datamaps found with the same name '%.*s' (%s), but different type descriptions!",
+                 "Two datamaps found with the same name '%.*s' in %.*s, but different type descriptions!",
                  name.size,
                  name.ptr,
-                 ch_mod_names[mod_idx]);
+                 mod_name.size,
+                 mod_name.ptr);
     return CH_PROCESS_ERROR;
 }
 
@@ -661,11 +662,13 @@ static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, ms
             CH_CHECK(ch_write_all_to_file(ctx));
             return CH_PROCESS_FINISHED;
         case CH_MSG_LOG_INFO:
+            CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_STR);
+            CH_LOG_LEVEL(CH_LL_INFO, ctx, "[payload INFO] %.*s\n", msg_data.via.str.size, msg_data.via.str.ptr);
+            return CH_PROCESS_OK;
         case CH_MSG_LOG_ERROR:
             CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_STR);
-            ch_log_level level = msg_type == CH_MSG_LOG_INFO ? CH_LL_INFO : CH_LL_ERROR;
-            CH_LOG_LEVEL(level, ctx, "[payload] %.*s\n", msg_data.via.str.size, msg_data.via.str.ptr);
-            return CH_PROCESS_OK;
+            CH_LOG_LEVEL(CH_LL_ERROR, ctx, "[payload ERROR] %.*s\n", msg_data.via.str.size, msg_data.via.str.ptr);
+            return CH_PROCESS_FINISHED;
         case CH_MSG_DATAMAP:
             CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_MAP);
             CH_CHECK(ch_recurse_visit_datamaps(msg_data, ch_check_dm_schema_cb, NULL));
