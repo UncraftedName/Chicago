@@ -70,7 +70,7 @@ Use this for datamap lookup? https://github.com/fanf2/qp
 
 #pragma comment(lib, "dbghelp.lib")
 
-void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scratch)
+void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scratch, size_t scratch_size)
 {
     while (isspace(*str))
         str++;
@@ -90,7 +90,9 @@ void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scrat
     // now go through it again and fill the scratch buffer
     out->bytes = scratch;
     out->wildmask = scratch + out->len;
-    memset(scratch, 0, out->len + (out->len + 7) / 8);
+    size_t required_scratch_space = out->len + (out->len + 7) / 8;
+    assert(required_scratch_space <= scratch_size);
+    memset(scratch, 0, required_scratch_space);
     s = str;
     size_t i = 0;
     while (*s) {
@@ -213,7 +215,10 @@ void ch_find_static_inits(ch_send_ctx* ctx, ch_search_ctx* sc)
     ch_pattern patterns[ARRAYSIZE(patterns_infos)];
 
     for (size_t i = 0; i < ARRAYSIZE(patterns); i++)
-        ch_parse_pattern_str(patterns_infos[i].str, &patterns[i], patterns_infos[i].scratch);
+        ch_parse_pattern_str(patterns_infos[i].str,
+                             &patterns[i],
+                             patterns_infos[i].scratch,
+                             ARRAYSIZE(patterns_infos[i].scratch));
 
     for (size_t i = 0; i < CH_MOD_COUNT; i++) {
 
@@ -330,7 +335,7 @@ void ch_iterate_datamaps(ch_send_ctx* ctx,
     const char* pattern_str = "6A 00 E8 ?? ?? ?? ?? 83 C4 04 A3 ?? ?? ?? ?? C3";
     unsigned char pattern_scratch[18];
     ch_pattern datadescinit_pattern;
-    ch_parse_pattern_str(pattern_str, &datadescinit_pattern, pattern_scratch);
+    ch_parse_pattern_str(pattern_str, &datadescinit_pattern, pattern_scratch, ARRAYSIZE(pattern_scratch));
 
     bool any = false;
     ch_mod_info* mod = &sc->mods[mod_idx];

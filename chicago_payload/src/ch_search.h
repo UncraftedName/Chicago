@@ -99,7 +99,7 @@ typedef struct ch_pattern {
 } ch_pattern;
 
 // create pattern from string, scratch must have enough space for all data
-void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scratch);
+void ch_parse_pattern_str(const char* str, ch_pattern* out, unsigned char* scratch, size_t scratch_size);
 
 bool ch_pattern_match(ch_ptr mem, ch_mod_sec mod_sec_text, ch_pattern pattern);
 

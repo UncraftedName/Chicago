@@ -77,7 +77,7 @@ static ch_ptr ch_find_ent_factory(ch_send_ctx* ctx, const ch_mod_info* server_mo
     //                                             v (cvar desc)  v (cvar impl)  v (cvar name)  v (thisptr)
     const char* ctor_pattern_str = "6A 00 6A 04 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? B9 ?? ?? ?? ??";
     unsigned char ctor_pattern_scratch[28];
-    ch_parse_pattern_str(ctor_pattern_str, &cb_udata.ctor_pattern, ctor_pattern_scratch);
+    ch_parse_pattern_str(ctor_pattern_str, &cb_udata.ctor_pattern, ctor_pattern_scratch, ARRAYSIZE(ctor_pattern_scratch));
 
     ch_ptr found_ctor = ch_memmem_cb(server_text.start,
                                      server_text.len,
@@ -133,7 +133,7 @@ static const datamap_t* ch_get_dm_from_server_ent_vtable(ch_ptr* ent_vt, const c
     // init pattern
     if (pattern.len == 0) {
         const char* pstr = "B8 ?? ?? ?? ?? C3";
-        ch_parse_pattern_str(pstr, &pattern, scratch);
+        ch_parse_pattern_str(pstr, &pattern, scratch, ARRAYSIZE(scratch));
     }
 
     // entities have way more than this many virtual funcs, but it's sufficient to only check this many
