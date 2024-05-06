@@ -125,6 +125,8 @@ void ch_iterate_datamaps(struct ch_send_ctx* ctx,
                          void (*cb)(const datamap_t* dm, void* user_data),
                          void* user_data);
 
+bool ch_datamap_looks_valid(const datamap_t* dm, const ch_mod_info* mod);
+
 ch_ptr ch_memmem(ch_ptr haystack, size_t haystack_len, ch_ptr needle, size_t needle_len);
 
 // calls the callback on each match which returns false if we should continue searching

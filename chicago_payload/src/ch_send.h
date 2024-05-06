@@ -17,6 +17,8 @@ typedef struct ch_send_ctx {
     msgpack_packer mp_pk;
 } ch_send_ctx;
 
+
+void ch_send_msgpack(ch_send_ctx* ctx);
 void ch_send_wave(ch_send_ctx* ctx, ch_comm_msg_type type);
 void ch_send_log_info(ch_send_ctx* ctx, const char* fmt, ...);
 

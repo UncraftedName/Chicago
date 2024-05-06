@@ -681,8 +681,11 @@ static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, ms
                         msg_data.via.map.ptr[CH_DM_MODULE].val.via.str.size,
                         msg_data.via.map.ptr[CH_DM_MODULE].val.via.str.ptr);
             return CH_PROCESS_OK;
-            break;
         case CH_MSG_LINKED_NAME:
+            CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_MAP);
+            CH_LOG_INFO(ctx, "Received %u linked names\n", msg_data.via.map.size);
+            // TODO verify & write to file
+            return CH_PROCESS_OK;
         default:
             return CH_PROCESS_BAD_FORMAT;
     }
