@@ -1,4 +1,5 @@
 #include "ch_send.h"
+#include "ch_ent_factory.h"
 
 #pragma warning(push, 3)
 #include <DbgHelp.h>
@@ -48,7 +49,6 @@ void __stdcall main(HINSTANCE h_mod)
 
     ch_get_module_info(ctx, &sc);
 
-    ch_find_entity_factory_cvar(ctx, &sc);
     ch_find_static_inits(ctx, &sc);
 
     ch_send_datamap_cb_udata dm_cb = {.send_ctx = ctx, .sc = &sc};
@@ -57,6 +57,9 @@ void __stdcall main(HINSTANCE h_mod)
         dm_cb.mod_idx = i;
         ch_iterate_datamaps(ctx, &sc, i, ch_send_datamap_cb, &dm_cb);
     }
+
+    const ch_ent_factory_dict* factory = ch_find_ent_factory_dict(ctx, &sc.mods[CH_MOD_SERVER]);
+    ch_send_ent_factory_kv(ctx, &sc, factory);
 
     ch_send_wave(ctx, CH_MSG_GOODBYE);
     ch_clean_exit(ctx, 0);

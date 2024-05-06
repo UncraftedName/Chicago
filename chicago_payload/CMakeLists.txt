@@ -15,4 +15,4 @@ include_directories(
 file(GLOB SRC_FILES "${PROJECT_SOURCE_DIR}/src/*.c")
 add_library(chicago_payload SHARED ${SRC_FILES})
 add_dependencies(chicago_payload chicago_parse_lib msgpack)
-target_link_libraries(chicago_payload PRIVATE chicago_parse_lib msgpack)
+target_link_libraries(chicago_payload PRIVATE chicago_parse_lib msgpack x86)

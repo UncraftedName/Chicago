@@ -5,6 +5,7 @@
 #include <minwindef.h>
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "ch_payload_comm_shared.h"
 #include "SDK/datamap.h"
@@ -20,6 +21,8 @@
 
 typedef const unsigned char* ch_ptr;
 #define CH_PTR_DIFF(p1, p2) ((size_t)(p1) - (size_t)(p2))
+
+#define CH_ADDR_FMT "[0x%08X]"
 
 struct ch_send_ctx;
 
@@ -51,9 +54,9 @@ typedef struct ch_search_ctx {
 } ch_search_ctx;
 
 // check if data of of a certain length lies strictly inside of a module section
-static inline bool ch_ptr_in_sec(ch_ptr ptr, ch_mod_sec sec, size_t len)
+static inline bool ch_ptr_in_sec(const void* ptr, ch_mod_sec sec, size_t len)
 {
-    return ptr >= sec.start && ptr + len < sec.start + sec.len && len <= sec.len;
+    return (ch_ptr)ptr >= sec.start && (ch_ptr)ptr + len <= sec.start + sec.len && (size_t)ptr + len >= (size_t)ptr;
 }
 
 // check if a null terminated string lies strictly inside of a module section & the string is ascii
@@ -65,9 +68,22 @@ static inline bool ch_str_in_sec(const char* str, ch_mod_sec sec)
     if (strnlen(str, max_len) == max_len)
         return false;
     for (; *str; str++)
-        if (*str > 127)
+        if ((uint8_t)*str > 127)
             return false;
     return true;
+}
+
+// some strings alloced with new won't be in RDATA
+static inline bool ch_str_readable(const char* str)
+{
+    __try {
+        for (; *str; str++)
+            if ((uint8_t)*str > 127)
+                return false;
+        return true;
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
 }
 
 static const char* const ch_mod_sec_names[CH_SEC_COUNT] = {
@@ -100,8 +116,6 @@ int ch_pattern_multi_search(ch_ptr* found_mem,
 
 // fill the search content, on fail send an error
 void ch_get_module_info(struct ch_send_ctx* ctx, ch_search_ctx* sc);
-
-void ch_find_entity_factory_cvar(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 
 void ch_find_static_inits(struct ch_send_ctx* ctx, ch_search_ctx* sc);
 

@@ -185,93 +185,6 @@ void ch_get_module_info(ch_send_ctx* ctx, ch_search_ctx* sc)
     }
 }
 
-typedef struct _find_ctor_cb_info {
-    ch_mod_sec server_mod_text;
-    ch_pattern ctor_pattern;
-    ch_ptr cvar_desc_str;
-    ch_ptr cvar_ctor_out;
-    ch_ptr cvar_impl_out;
-} _find_ctor_cb_info;
-
-static bool _find_ctor_cb(ch_ptr match, void* user_data)
-{
-    _find_ctor_cb_info* info = user_data;
-    info->cvar_ctor_out = match - 15;
-
-    if (info->cvar_ctor_out < info->server_mod_text.start)
-        return false;
-    if (!ch_pattern_match(info->cvar_ctor_out, info->server_mod_text, info->ctor_pattern))
-        return false;
-    if (*(ch_ptr*)(info->cvar_ctor_out + 5) != info->cvar_desc_str)
-        return false;
-    info->cvar_impl_out = *(ch_ptr*)(info->cvar_ctor_out + 10);
-    if (!ch_ptr_in_sec(info->cvar_impl_out, info->server_mod_text, 0))
-        return false;
-    return true;
-}
-
-void ch_find_entity_factory_cvar(ch_send_ctx* ctx, ch_search_ctx* sc)
-{
-    ch_mod_info* server_mod = &sc->mods[CH_MOD_SERVER];
-    ch_mod_sec server_rdata = server_mod->sections[CH_SEC_RDATA];
-    ch_mod_sec server_text = server_mod->sections[CH_SEC_TEXT];
-
-    enum {
-        CH_CVAR_STR_NAME,
-        CH_CVAR_STR_DESC,
-    };
-
-    struct {
-        const char* str;
-        ch_ptr p;
-    } str_infos[] = {
-        {.str = "dumpentityfactories"},
-        {.str = "Lists all entity factory names."},
-    };
-
-    // first, find the above strings
-
-    for (int i = 0; i < 2; i++) {
-        str_infos[i].p = ch_memmem_unique(server_rdata.start,
-                                          server_rdata.len,
-                                          (ch_ptr)str_infos[i].str,
-                                          strlen(str_infos[i].str) + 1);
-
-        if (str_infos[i].p == NULL || str_infos[i].p == CH_MEM_DUP)
-            ch_send_err_and_exit(ctx,
-                                 "Error searching for string '%s' in the .rdata section in server.dll (%s).",
-                                 str_infos[i].str,
-                                 str_infos[i].p == NULL ? "no matches" : "multiple matches but expected 1");
-    }
-
-    _find_ctor_cb_info cb_info = {
-        .server_mod_text = server_text,
-        .cvar_desc_str = str_infos[CH_CVAR_STR_DESC].p,
-    };
-    //                                             v (cvar desc)  v (cvar impl)  v (cvar name)  v (thisptr)
-    const char* ctor_pattern_str = "6A 00 6A 04 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? B9 ?? ?? ?? ??";
-    unsigned char ctor_pattern_scratch[28];
-    ch_parse_pattern_str(ctor_pattern_str, &cb_info.ctor_pattern, ctor_pattern_scratch);
-
-    ch_ptr found_ctor = ch_memmem_cb(server_text.start,
-                                     server_text.len,
-                                     (ch_ptr)&str_infos[CH_CVAR_STR_NAME].p,
-                                     sizeof(ch_ptr),
-                                     _find_ctor_cb,
-                                     &cb_info);
-
-    if (!found_ctor)
-        ch_send_err_and_exit(ctx, "Could not find 'dumpentityfactories' ConCommand ctor in server.dll.");
-
-    assert(cb_info.cvar_ctor_out && cb_info.cvar_impl_out);
-
-    ch_send_log_info(ctx,
-                     "Found 'dumpentityfactories' ConCommand ctor at server.dll[0x%08X].",
-                     CH_PTR_DIFF(cb_info.cvar_ctor_out, server_mod->base));
-    sc->dump_entity_factories_ctor = cb_info.cvar_ctor_out;
-    sc->dump_entity_factories_impl = cb_info.cvar_impl_out;
-}
-
 void ch_find_static_inits(ch_send_ctx* ctx, ch_search_ctx* sc)
 {
     // we're using patterns, I don't care :)
@@ -374,12 +287,8 @@ bool ch_datamap_looks_valid(const datamap_t* dm, const ch_mod_info* mod)
                 if (desc->fieldType != FIELD_VOID || !desc->inputFunc || desc->flags != FTYPEDESC_FUNCTIONTABLE)
                     return false;
                 // game typedescs added with DEFINE_FUNCTION_RAW will allocate the field name with new for some stupid reason
-                __try {
-                    volatile size_t a = strlen(desc->fieldName);
-                    (void)a;
-                } __except (EXCEPTION_EXECUTE_HANDLER) {
+                if (!ch_str_readable(desc->fieldName))
                     return false;
-                }
             }
             if (desc->externalName && !ch_str_in_sec(desc->externalName, mod_rdata))
                 return false;
