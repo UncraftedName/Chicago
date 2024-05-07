@@ -20,7 +20,8 @@ typedef struct ch_mp_unpacked_ll {
 
 typedef struct ch_process_msg_ctx {
     bool got_hello;
-    char _pad[3];
+    bool got_linked_names;
+    char _pad[2];
     ch_log_level log_level;
 
     /*
@@ -43,6 +44,7 @@ typedef struct ch_process_msg_ctx {
     * one we got before.
     */
     struct hashmap* dm_hashmap;
+    msgpack_object_map linked_names;
 
     const ch_datamap_collection_info* collection_save_info;
 } ch_process_msg_ctx;
@@ -311,6 +313,47 @@ static ch_process_result ch_verify_and_hash_dm_cb(const msgpack_object* o, void*
     return CH_PROCESS_ERROR;
 }
 
+static ch_process_result ch_verify_linked_names(ch_process_msg_ctx* ctx, msgpack_object_map linked_names)
+{
+    CH_CHECK_FORMAT(ctx->linked_names.size == 0);
+    CH_CHECK_FORMAT(linked_names.size > 0);
+
+    for (uint32_t i = 0; i < linked_names.size; i++) {
+        msgpack_object_kv* kv = &linked_names.ptr[i];
+        CH_CHECK_FORMAT(kv->key.type == MSGPACK_OBJECT_STR && kv->val.type == MSGPACK_OBJECT_STR);
+
+        ch_hashmap_entry entry_lookup = {.name = kv->key.via.str};
+        const ch_hashmap_entry* cur_entry = (const ch_hashmap_entry*)hashmap_get(ctx->dm_hashmap, &entry_lookup);
+        if (cur_entry) {
+            CH_LOG_ERROR(ctx,
+                         "Received linked name '%.*s' -> '%.*s', but there's already a datamap called '%.*s'!",
+                         kv->key.via.str.size,
+                         kv->key.via.str.ptr,
+                         kv->val.via.str.size,
+                         kv->val.via.str.ptr,
+                         kv->key.via.str.size,
+                         kv->key.via.str.ptr);
+            return CH_PROCESS_ERROR;
+        }
+
+        entry_lookup.name = kv->val.via.str;
+        cur_entry = (const ch_hashmap_entry*)hashmap_get(ctx->dm_hashmap, &entry_lookup);
+        if (!cur_entry) {
+            CH_LOG_ERROR(ctx,
+                         "Received linked name '%.*s' -> '%.*s', but the datamap '%.*s' doesn't exist!",
+                         kv->key.via.str.size,
+                         kv->key.via.str.ptr,
+                         kv->val.via.str.size,
+                         kv->val.via.str.ptr,
+                         kv->val.via.str.size,
+                         kv->val.via.str.ptr);
+            return CH_PROCESS_ERROR;
+        }
+    }
+    ctx->linked_names = linked_names;
+    return CH_PROCESS_OK;
+}
+
 static ch_process_result ch_count_maps_cb(const msgpack_object* o, void* user_data)
 {
     (void)o;
@@ -346,7 +389,8 @@ static void ch_change_datamap_references_to_strings(msgpack_object_map dm)
     }
 }
 
-static ch_process_result ch_msgpack_write_collection(msgpack_packer* pk,
+static ch_process_result ch_msgpack_write_collection(ch_process_msg_ctx* ctx,
+                                                     msgpack_packer* pk,
                                                      const ch_hashmap_entry** sorted_maps,
                                                      size_t n_sorted_maps,
                                                      const ch_datamap_collection_info* collection_save_info)
@@ -371,6 +415,9 @@ static ch_process_result ch_msgpack_write_collection(msgpack_packer* pk,
         msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = sorted_maps[i]->o.via.map};
         CH_TRY_MSGPACK(object(pk, o));
     }
+    CH_TRY_MSGPACK(str_with_body(pk, CH_HEADER_LINKED_NAMES_key, strlen(CH_HEADER_LINKED_NAMES_key)));
+    msgpack_object o = {.type = MSGPACK_OBJECT_MAP, .via.map = ctx->linked_names};
+    CH_TRY_MSGPACK(object(pk, o));
     return CH_PROCESS_OK;
 
 #undef CH_TRY_MSGPACK
@@ -416,9 +463,9 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
 
     ch_process_result result = CH_PROCESS_OK;
 
-    // msgpack str -> index
+    // msgpack str -> offset from string_buf
     struct hashmap* hm_unique_strs = hashmap_new(sizeof(ch_hashmap_entry),
-                                                 n_sorted_maps * 16,
+                                                 n_sorted_maps * 16 + ctx->linked_names.size,
                                                  0,
                                                  0,
                                                  ch_hashmap_entry_hash,
@@ -433,7 +480,7 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
         msgpack_object_kv* dm_kv = sorted_maps[i]->o.via.map.ptr;
         msgpack_object dm_strs[] = {dm_kv[CH_DM_NAME].val, dm_kv[CH_DM_MODULE].val};
         result = ch_add_strings_to_map(hm_unique_strs, dm_strs, ARRAYSIZE(dm_strs), &string_alloc_size);
-        if (result != CH_PROCESS_OK)
+        if (result)
             goto end;
         msgpack_object_array fields = dm_kv[CH_DM_FIELDS].val.via.array;
         for (size_t j = 0; j < fields.size; j++) {
@@ -443,15 +490,20 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
             total_typedescs_to_write++;
             msgpack_object td_strs[] = {td_kv[CH_TD_NAME].val, td_kv[CH_TD_EXTERNAL_NAME].val};
             result = ch_add_strings_to_map(hm_unique_strs, td_strs, ARRAYSIZE(td_strs), &string_alloc_size);
-            if (result != CH_PROCESS_OK)
+            if (result)
                 goto end;
         }
         sorted_maps[i]->offset = i;
     }
+    for (uint32_t i = 0; i < ctx->linked_names.size; i++) {
+        result = ch_add_strings_to_map(hm_unique_strs, &ctx->linked_names.ptr[i].key, 1, &string_alloc_size);
+        if (result)
+            goto end;
+    }
 
     collection_out->len = sizeof(ch_datamap_collection) + n_sorted_maps * sizeof(ch_datamap) +
                           total_typedescs_to_write * sizeof(ch_type_description) + string_alloc_size +
-                          sizeof(ch_datamap_collection_tag);
+                          sizeof(ch_linked_name) * ctx->linked_names.size + sizeof(ch_datamap_collection_tag);
 
     collection_out->arr = calloc(1, collection_out->len);
     if (!collection_out->arr) {
@@ -463,7 +515,8 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
     ch_datamap* ch_dms = (ch_datamap*)(ch_col + 1);
     ch_type_description* ch_tds = (ch_type_description*)(ch_dms + n_sorted_maps);
     char* string_buf = (char*)(ch_tds + total_typedescs_to_write);
-    ch_datamap_collection_tag* ch_tag = (ch_datamap_collection_tag*)(string_buf + string_alloc_size);
+    ch_linked_name* ch_linked_names = (ch_linked_name*)(string_buf + string_alloc_size);
+    ch_datamap_collection_tag* ch_tag = (ch_datamap_collection_tag*)(ch_linked_names + ctx->linked_names.size);
 
     // fill collection
     ch_col->lookup = NULL;
@@ -476,7 +529,7 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
 
 #ifndef NDEBUG
     // check that string section is filled (at most one '\0' char between consecutive strings)
-    for (const char* s = string_buf; s < (char*)ch_tag - 2; s++)
+    for (const char* s = string_buf; s < (char*)ch_linked_names - 2; s++)
         assert(*(uint16_t*)s != 0);
 #endif
 
@@ -525,6 +578,12 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
         ch_dm++;
     }
 
+    // fill linked names
+    for (uint32_t i = 0; i < ctx->linked_names.size; i++) {
+        ch_linked_names[i].linked_name_rel_off = ch_get_entry_offset(hm_unique_strs, ctx->linked_names.ptr[i].key);
+        ch_linked_names[i].dm_rel_off = ch_get_entry_offset(ctx->dm_hashmap, ctx->linked_names.ptr[i].val);
+    }
+
     // consistency checks, check that the expected amount of data was written
     assert((size_t)(ch_dm - ch_dms) == n_sorted_maps);
     assert((size_t)(ch_td - ch_tds) == total_typedescs_to_write);
@@ -533,9 +592,11 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
 
     // fill tag
     ch_tag->n_datamaps = n_sorted_maps;
+    ch_tag->n_linked_names = ctx->linked_names.size;
     ch_tag->datamaps_start = (size_t)ch_dms - (size_t)collection_out->arr;
     ch_tag->typedescs_start = (size_t)ch_tds - (size_t)collection_out->arr;
     ch_tag->strings_start = (size_t)string_buf - (size_t)collection_out->arr;
+    ch_tag->linked_names_start = (size_t)ch_linked_names - (size_t)collection_out->arr;
     ch_tag->version = CH_DATAMAP_STRUCT_VERSION;
     strncpy(ch_tag->magic, CH_COLLECTION_FILE_MAGIC, sizeof ch_tag->magic);
 
@@ -591,7 +652,7 @@ static ch_process_result ch_write_all_to_file(ch_process_msg_ctx* ctx)
                         n_datamaps,
                         ctx->collection_save_info->output_file_path);
             msgpack_packer packer = {.data = f, .callback = msgpack_fbuffer_write};
-            result = ch_msgpack_write_collection(&packer, sorted_maps, n_datamaps, ctx->collection_save_info);
+            result = ch_msgpack_write_collection(ctx, &packer, sorted_maps, n_datamaps, ctx->collection_save_info);
             if (result != CH_PROCESS_OK)
                 CH_LOG_ERROR(ctx, "Failed writing datamaps (errno=%d).", errno);
             fclose(f);
@@ -684,7 +745,8 @@ static ch_process_result ch_process_message_pack_msg(ch_process_msg_ctx* ctx, ms
         case CH_MSG_LINKED_NAME:
             CH_CHECK_FORMAT(msg_data.type == MSGPACK_OBJECT_MAP);
             CH_LOG_INFO(ctx, "Received %u linked names\n", msg_data.via.map.size);
-            // TODO verify & write to file
+            CH_CHECK(ch_verify_linked_names(ctx, msg_data.via.map));
+            *save_unpacked = true;
             return CH_PROCESS_OK;
         default:
             return CH_PROCESS_BAD_FORMAT;

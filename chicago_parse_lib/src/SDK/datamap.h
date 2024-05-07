@@ -163,10 +163,46 @@ typedef struct ch_save_restore_ops {
         size_t name##_rel_off;        \
     }
 
-// update whenever changes are made to ch_type_description or ch_datamap
-#define CH_DATAMAP_STRUCT_VERSION 3
 
+/*
+* The two main options I see are to treat 0 as "NULL" and add 1 to every offset or to
+* use SIZE_MAX as "NULL" and keep offsets as is. Counterintuitively to me, this has
+* less than a percent difference on the compressed size of the file. For DEFLATE, the
+* file size is ~350 bytes smaller when using 0, but for LZMA it's ~160 bytes bigger.
+* To make the file writing slightly easier to maintain, we'll keep it at SIZE_MAX.
+*/
 #define CH_REL_OFF_NULL SIZE_MAX
+
+// update whenever changes are made to ch_type_description or ch_datamap
+#define CH_DATAMAP_STRUCT_VERSION 4
+#define CH_COLLECTION_FILE_MAGIC "chicago"
+
+/*
+* This tag is put at the end of the file so that we can allocate one big bungus buffer
+* and assign our ch_datamap_collection pointer to that, then free it once we're done.
+* When reading from disk, we can jump to the end of the file and read only the tag
+* without issue. But when using miniz, we can only decompress blocks of at least 64KB
+* at a time. Since the datamap collection files should be relatively small, I don't
+* care about the overhead of copying the entire file into mem before checking if the
+* tag is valid.
+*/
+typedef struct ch_datamap_collection_tag {
+    size_t n_datamaps;
+    size_t n_linked_names;
+    // absolute offsets from file start
+    size_t datamaps_start;
+    size_t typedescs_start;
+    size_t strings_start;
+    size_t linked_names_start;
+    // keep these guys at the end across all versions
+    size_t version; // CH_DATAMAP_STRUCT_VERSION
+    char magic[8];  // CH_COLLECTION_FILE_MAGIC
+} ch_datamap_collection_tag;
+
+typedef struct ch_linked_name {
+    CH_PACKED_PTR(const char*, linked_name);
+    CH_PACKED_PTR(const struct ch_datamap*, dm);
+} ch_linked_name;
 
 // a slightly modified version of the game's datamap_t
 typedef struct ch_datamap {

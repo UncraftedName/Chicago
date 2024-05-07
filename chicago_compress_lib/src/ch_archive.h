@@ -37,27 +37,6 @@ typedef enum ch_archive_result {
 } ch_archive_result;
 
 #define CH_COLLECTION_FILE_MAX_SIZE (1024 * 1024 * 32)
-#define CH_COLLECTION_FILE_MAGIC "chicago"
-
-/*
-* This tag is put at the end of the file so that we can allocate one big bungus buffer
-* and assign our ch_datamap_collection pointer to that, then free it once we're done.
-* When reading from disk, we can jump to the end of the file and read only the tag
-* without issue. But when using miniz, we can only decompress blocks of at least 64KB
-* at a time. Since the datamap collection files should be relatively small, I don't
-* care about the overhead of copying the entire file into mem before checking if the
-* tag is valid.
-*/
-typedef struct ch_datamap_collection_tag {
-    size_t n_datamaps;
-    // absolute offsets from file start
-    size_t datamaps_start;
-    size_t typedescs_start;
-    size_t strings_start;
-    // keep these guys at the end across all versions
-    size_t version; // CH_DATAMAP_STRUCT_VERSION
-    char magic[8];  // CH_COLLECTION_FILE_MAGIC
-} ch_datamap_collection_tag;
 
 // returns a fail reason or NULL on success
 const char* ch_brotli_decompress(ch_byte_array in, ch_byte_array* out);

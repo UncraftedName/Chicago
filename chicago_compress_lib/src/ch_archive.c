@@ -105,10 +105,14 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
     ch_datamap* dms = (ch_datamap*)(bytes.arr + tag->datamaps_start);
     ch_type_description* tds = (ch_type_description*)(bytes.arr + tag->typedescs_start);
     const char* strings = bytes.arr + tag->strings_start;
+    ch_linked_name* lns = (ch_linked_name*)(bytes.arr + tag->linked_names_start);
 
     CH_CHECK_PTR(dms);
+    CH_CHECK_PTR(dms + tag->n_datamaps);
     CH_CHECK_PTR(tds);
     CH_CHECK_PTR(strings);
+    CH_CHECK_PTR(lns);
+    CH_CHECK_PTR(lns + tag->n_linked_names);
 
     // the offsets for the various fields are relative to one of the above pointers and they should all lie inside the array
 #define CH_FIXUP(packed, rel_to)                   \
@@ -121,6 +125,7 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
         }                                          \
     } while (0)
 
+    // fixup datamaps & type descs
     for (size_t i = 0; i < tag->n_datamaps; i++) {
         ch_datamap* dm = &dms[i];
         CH_FIXUP(dm->base_map, dms);
@@ -139,21 +144,32 @@ ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
         }
     }
 
+    for (size_t i = 0; i < tag->n_linked_names; i++) {
+        ch_linked_name* ln = &lns[i];
+        CH_FIXUP(ln->linked_name, strings);
+        CH_FIXUP(ln->dm, dms);
+    }
+
 #undef CH_FIXUP
 #undef CH_CHECK_PTR
 
     // TODO move to a different function & handle OOM
 
     col->lookup = hashmap_new(sizeof(ch_datamap_lookup_entry),
-                              tag->n_datamaps,
+                              tag->n_datamaps + tag->n_linked_names,
                               0,
                               0,
                               ch_datamap_collection_name_hash,
                               ch_datamap_collection_name_compare,
                               NULL,
                               NULL);
+
     for (size_t i = 0; i < tag->n_datamaps; i++) {
         ch_datamap_lookup_entry entry = {.name = dms[i].class_name, .datamap = &dms[i]};
+        hashmap_set(col->lookup, &entry);
+    }
+    for (size_t i = 0; i < tag->n_linked_names; i++) {
+        ch_datamap_lookup_entry entry = {.name = lns[i].linked_name, .datamap = lns[i].dm};
         hashmap_set(col->lookup, &entry);
     }
 

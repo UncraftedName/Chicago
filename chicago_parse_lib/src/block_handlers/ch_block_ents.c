@@ -9,7 +9,7 @@ ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, ch_rest
 
     CH_RET_IF_ERR(ch_lookup_datamap(ctx, classname, &ent->class_info.dm));
 
-    printf("restoring %s\n", classname);
+    printf("restoring %s (%s)\n", classname, ent->class_info.dm->class_name);
     return CH_ERR_NONE;
 }
 
@@ -78,7 +78,7 @@ ch_err ch_parse_entity_block_body(ch_parsed_save_ctx* ctx)
         ch_err err = ch_restore_entity(ctx, classname, &block->entities[i]);
         if (err == CH_ERR_OUT_OF_MEMORY)
             return err;
-        else if (err != CH_ERR_DATAMAP_NOT_FOUND)
+        else if (err && err != CH_ERR_DATAMAP_NOT_FOUND)
             CH_PARSER_LOG_ERR(ctx, "'ch_restore_entity' failed: %s", ch_err_strs[err]);
     }
     return CH_ERR_NONE;
