@@ -105,13 +105,15 @@ ch_err ch_find_field(const ch_datamap* dm,
     assert(field_name);
     if (!field)
         return CH_ERR_NONE;
-    for (; recurse_base_classes && dm; dm = dm->base_map) {
+    for (; dm; dm = dm->base_map) {
         for (size_t i = 0; i < dm->n_fields; i++) {
             if (!strcmp(dm->fields[i].name, field_name)) {
                 *field = &dm->fields[i];
                 return CH_ERR_NONE;
             }
         }
+        if (!recurse_base_classes)
+            break;
     }
     *field = NULL;
     return CH_ERR_FIELD_NOT_FOUND;
