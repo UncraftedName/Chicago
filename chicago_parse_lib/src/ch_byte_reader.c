@@ -41,12 +41,24 @@ ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const ch
     return CH_ERR_NONE;
 }
 
-ch_err ch_br_parse_block(ch_byte_reader* br, const ch_symbol_table* st, ch_block* block)
+ch_err ch_br_start_block(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_block* block)
 {
-    block->size_bytes = ch_br_read_16(br);
-    if (block->size_bytes < 0)
-        return CH_ERR_BAD_BLOCK_SIZE;
-    return ch_br_read_symbol(br, st, &block->symbol);
+    int16_t size_bytes = ch_br_read_16(br_cur);
+    if (size_bytes < 0)
+        return CH_ERR_BAD_BLOCK_START;
+    CH_RET_IF_ERR(ch_br_read_symbol(br_cur, st, &block->symbol));
+    block->reader_after_block = ch_br_split_skip_swap(br_cur, size_bytes);
+    if (br_cur->overflowed)
+        return CH_ERR_BAD_BLOCK_START;
+    return CH_ERR_NONE;
+}
+
+ch_err ch_br_end_block(ch_byte_reader* br, ch_block* block)
+{
+    if (br->cur != block->reader_after_block.cur)
+        return CH_ERR_BAD_BLOCK_END;
+    *br = block->reader_after_block;
+    return CH_ERR_NONE;
 }
 
 static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char* dest, const ch_type_description* td)
@@ -61,19 +73,16 @@ static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char*
         case FIELD_FUNCTION:
         case FIELD_MODELINDEX:
         case FIELD_MATERIALINDEX: {
-            const char* p = (const char*)br->cur;
-            for (size_t i = 0; p < (const char*)br->end && i < td->n_elems; i++) {
-                if (*p) {
-                    size_t len = strnlen(p, (size_t)((const char*)br->end - p));
+            for (size_t i = 0; br->cur < br->end && i < td->n_elems; i++) {
+                if (*br->cur) {
+                    size_t len = strnlen((const char*)br->cur, (size_t)(br->end - br->cur));
                     char** alloc_dest = (char**)dest + i;
-                    *alloc_dest = ch_arena_alloc(ctx->arena, len + 1);
-                    if (!*alloc_dest)
-                        return CH_ERR_OUT_OF_MEMORY;
-                    strncpy(*alloc_dest, p, len + 1);
-                    p += len + 1;
-                } else {
-                    p++;
+                    CH_CHECKED_ALLOC(*alloc_dest, ch_arena_alloc(ctx->arena, len + 1));
+                    ch_br_read(br, *alloc_dest, len);
+                    (*alloc_dest)[len] = '\0';
                 }
+                if (br->cur < br->end)
+                    ch_br_skip_unchecked(br, 1);
             }
             break;
         }
@@ -143,7 +152,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
 
     for (int i = 0; i < n_fields; i++) {
         ch_block block;
-        CH_RET_IF_ERR(ch_br_parse_block(br, &ctx->st, &block));
+        CH_RET_IF_ERR(ch_br_start_block(&ctx->st, &ctx->br, &block));
 
         // CRestore::FindField
         const ch_type_description* field = NULL;
@@ -165,10 +174,9 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
 
         // read the field!
 
-        ch_byte_reader br_after_field = ch_br_split_skip_swap(br, block.size_bytes);
-
         if (field->type == FIELD_CUSTOM) {
             CH_PARSER_LOG_ERR(ctx, "CUSTOM fields are not implemented yet (%s.%s)", dm->class_name, field->name);
+            ctx->br.cur = ctx->br.end; // skip
         } else if (field->type == FIELD_EMBEDDED) {
             for (int j = 0; j < field->n_elems; j++)
                 CH_RET_IF_ERR(ch_br_restore_recursive(ctx,
@@ -178,7 +186,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
             ch_br_restore_simple_field(ctx, class_ptr + field->ch_offset, field);
         }
 
-        *br = br_after_field;
+        CH_RET_IF_ERR(ch_br_end_block(br, &block));
     }
 
     return CH_ERR_NONE;

@@ -5,14 +5,14 @@
 #include "ch_save_internal.h"
 
 typedef struct ch_block {
-    short size_bytes;
-    char _pad[2];
+    ch_byte_reader reader_after_block;
     const char* symbol;
 } ch_block;
 
 ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const char** symbol);
 
-ch_err ch_br_parse_block(ch_byte_reader* br, const ch_symbol_table* st, ch_block* block);
+ch_err ch_br_start_block(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_block* block);
+ch_err ch_br_end_block(ch_byte_reader* br, ch_block* block);
 
 // CRestore::ReadFeilds
 ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,

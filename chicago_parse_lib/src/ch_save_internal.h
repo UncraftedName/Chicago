@@ -15,6 +15,13 @@
             return _tmp_err; \
     } while (0)
 
+#define CH_CHECKED_ALLOC(to, alloc_op)   \
+    do {                                 \
+        (to) = alloc_op;                 \
+        if (!(to))                       \
+            return CH_ERR_OUT_OF_MEMORY; \
+    } while (0)
+
 typedef struct ch_symbol_table {
     const char* symbols;
     int n_symbols;

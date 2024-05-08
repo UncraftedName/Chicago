@@ -34,9 +34,9 @@
     GEN(CH_ERR_BAD_SYMBOL)            \
     GEN(CH_ERR_BAD_FIELD_COUNT)       \
     GEN(CH_ERR_FIELD_NOT_FOUND)       \
-    GEN(CH_ERR_BAD_FIELD_BLOCK_SIZE)  \
     GEN(CH_ERR_BAD_FIELD_TYPE)        \
-    GEN(CH_ERR_BAD_BLOCK_SIZE)        \
+    GEN(CH_ERR_BAD_BLOCK_START)       \
+    GEN(CH_ERR_BAD_BLOCK_END)         \
                                       \
     /* state file errors */           \
     GEN(CH_ERR_BAD_STATE_FILE_LENGTH) \
