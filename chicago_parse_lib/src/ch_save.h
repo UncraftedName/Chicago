@@ -37,6 +37,7 @@
     GEN(CH_ERR_BAD_FIELD_TYPE)        \
     GEN(CH_ERR_BAD_BLOCK_START)       \
     GEN(CH_ERR_BAD_BLOCK_END)         \
+    GEN(CH_ERR_BAD_FIELD_READ)        \
                                       \
     /* state file errors */           \
     GEN(CH_ERR_BAD_STATE_FILE_LENGTH) \
@@ -82,14 +83,40 @@ typedef struct ch_restored_class_arr {
 #define CH_RCA_ELEM_DATA(rca, n) (assert((size_t)n < (rca).n_elems), ((rca).data + (rca).dm->ch_size * (n)))
 #define CH_RCA_DATA_SIZE(rca) ((rca).dm->ch_size * (rca).n_elems)
 
+typedef struct ch_str_ll {
+    char* str;
+    struct ch_str_ll* next;
+} ch_str_ll;
+
+typedef struct ch_npc_schedule_conditions {
+    ch_str_ll* conditions;
+    ch_str_ll* custom_interrupts;
+    ch_str_ll* pre_ignore;
+    ch_str_ll* ignore;
+} ch_npc_schedule_conditions;
+
+typedef struct ch_npc_navigator {
+    int16_t version;
+    char _pad[2];
+    struct ch_cr_utl_vector_restored* path_vec;
+} ch_npc_navigator;
+
+typedef struct ch_custom_ent_restore_base_npc {
+    ch_restored_class extended_header;
+    // only if extended_header.version >= CH_HEADER_AI_FIRST_VERSION_WITH_NAVIGATOR_SAVE
+    ch_npc_schedule_conditions* schedule_conditions;
+    // only if extended_header.version >= CH_HEADER_AI_FIRST_VERSION_WITH_NAVIGATOR_SAVE
+    ch_npc_navigator* navigator;
+} ch_custom_ent_restore_base_npc;
+
+typedef struct ch_custom_ent_restore_speaker {
+    int x; // TODO
+} ch_custom_ent_restore_speaker;
 
 typedef struct ch_restored_entity {
     ch_restored_class class_info;
-    // TODO these are more complicated than just simple restored classes, make special structs for them
-    // TODO should be possible to check the vtable of entities and check if there's some custom restore funcs, probably too much effort...
-    // TODO liquid portals lololol
-    ch_restored_class ai_header; // only if the entity inherits from CAI_BaseNPC
-    ch_restored_class speaker_info; // only if the entity inherits from CSpeaker
+    ch_custom_ent_restore_base_npc* npc_header;  // only if the entity inherits from CAI_BaseNPC
+    ch_custom_ent_restore_speaker* speaker_info; // only if the entity inherits from CSpeaker
 } ch_restored_entity;
 
 typedef struct ch_block_entities {

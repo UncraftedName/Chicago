@@ -3,6 +3,8 @@
 #include <memory.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
 
 typedef struct ch_byte_reader {
     const unsigned char *cur, *end;
@@ -28,6 +30,27 @@ inline void ch_br_skip(ch_byte_reader* br, size_t n)
 inline void ch_br_skip_unchecked(ch_byte_reader* br, size_t n)
 {
     br->cur += n;
+}
+
+inline size_t ch_br_remaining(const ch_byte_reader* br)
+{
+    return (size_t)br->end - (size_t)br->cur;
+}
+
+inline void ch_br_skip_capped(ch_byte_reader* br, size_t n)
+{
+    ch_br_skip_unchecked(br, min(n, ch_br_remaining(br)));
+}
+
+inline size_t ch_br_strnlen(const ch_byte_reader* br, size_t max_search)
+{
+    max_search = min(max_search, ch_br_remaining(br));
+    return strnlen((const char*)br->cur, max_search);
+}
+
+inline size_t ch_br_strlen(const ch_byte_reader* br)
+{
+    return strnlen((const char*)br->cur, ch_br_remaining(br));
 }
 
 // returns true on success
@@ -89,7 +112,8 @@ inline ch_byte_reader ch_br_split_skip_swap(ch_byte_reader* br, size_t chunk_siz
 * Creates & returns a byte reader at some position relative
 * to the given reader. The given reader is unchanged.
 */
-inline ch_byte_reader ch_br_jmp_rel(const ch_byte_reader* br, size_t jmp_size) {
+inline ch_byte_reader ch_br_jmp_rel(const ch_byte_reader* br, size_t jmp_size)
+{
     if (ch_br_could_skip(br, jmp_size)) {
         ch_byte_reader ret = {.cur = br->cur + jmp_size, .end = br->end};
         return ret;

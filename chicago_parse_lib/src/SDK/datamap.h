@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef enum ch_field_type {
     FIELD_VOID = 0,   // No type or value

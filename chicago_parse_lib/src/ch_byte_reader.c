@@ -36,14 +36,14 @@ ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const ch
     if (idx < 0 || idx >= st->n_symbols)
         return CH_ERR_BAD_SYMBOL;
     *symbol = st->symbols + st->symbol_offs[idx];
-    if (!**symbol)
-        return CH_ERR_BAD_SYMBOL;
     return CH_ERR_NONE;
 }
 
 ch_err ch_br_start_block(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_block* block)
 {
     int16_t size_bytes = ch_br_read_16(br_cur);
+    if (br_cur->overflowed)
+        return CH_ERR_READER_OVERFLOWED;
     if (size_bytes < 0)
         return CH_ERR_BAD_BLOCK_START;
     CH_RET_IF_ERR(ch_br_read_symbol(br_cur, st, &block->symbol));
@@ -53,9 +53,9 @@ ch_err ch_br_start_block(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_b
     return CH_ERR_NONE;
 }
 
-ch_err ch_br_end_block(ch_byte_reader* br, ch_block* block)
+ch_err ch_br_end_block(ch_byte_reader* br, ch_block* block, bool check_match)
 {
-    if (br->cur != block->reader_after_block.cur)
+    if (check_match && br->cur != block->reader_after_block.cur)
         return CH_ERR_BAD_BLOCK_END;
     *br = block->reader_after_block;
     return CH_ERR_NONE;
@@ -73,16 +73,15 @@ static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char*
         case FIELD_FUNCTION:
         case FIELD_MODELINDEX:
         case FIELD_MATERIALINDEX: {
-            for (size_t i = 0; br->cur < br->end && i < td->n_elems; i++) {
-                if (*br->cur) {
-                    size_t len = strnlen((const char*)br->cur, (size_t)(br->end - br->cur));
+            for (size_t i = 0; ch_br_remaining(br) > 0 && i < td->n_elems; i++) {
+                size_t len = ch_br_strlen(br);
+                if (len > 0) {
                     char** alloc_dest = (char**)dest + i;
                     CH_CHECKED_ALLOC(*alloc_dest, ch_arena_alloc(ctx->arena, len + 1));
                     ch_br_read(br, *alloc_dest, len);
                     (*alloc_dest)[len] = '\0';
                 }
-                if (br->cur < br->end)
-                    ch_br_skip_unchecked(br, 1);
+                ch_br_skip_capped(br, 1);
             }
             break;
         }
@@ -105,8 +104,9 @@ static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char*
         case FIELD_MATRIX3X4_WORLDSPACE:
         case FIELD_INTERVAL:
         case FIELD_VECTOR2D: {
-            size_t bytes_avail = (size_t)(br->end - br->cur);
-            assert(td->total_size_bytes && bytes_avail >= td->total_size_bytes);
+            size_t bytes_avail = ch_br_remaining(br);
+            if (!td->total_size_bytes || bytes_avail < td->total_size_bytes)
+                return CH_ERR_BAD_FIELD_READ;
             ch_br_read(br, dest, min(td->total_size_bytes, bytes_avail));
             break;
         }
@@ -186,7 +186,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
             ch_br_restore_simple_field(ctx, class_ptr + field->ch_offset, field);
         }
 
-        CH_RET_IF_ERR(ch_br_end_block(br, &block));
+        CH_RET_IF_ERR(ch_br_end_block(br, &block, true));
     }
 
     return CH_ERR_NONE;

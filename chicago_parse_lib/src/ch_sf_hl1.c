@@ -79,12 +79,15 @@ static ch_err ch_restore_block_headers(ch_parsed_save_ctx* ctx, ch_block_body_in
             CH_PARSER_LOG_ERR(ctx, "no registered handlers for block '%s'", header_name);
             continue;
         }
+        int32_t header_loc = CH_FIELD_AT(header_data, td_loc_header, int32_t);
+        if (header_loc == -1)
+            continue;
         const ch_block_handler* handler = &ch_block_handlers[j];
         if (!handler->fn_parse_header) {
             CH_PARSER_LOG_ERR(ctx, "no associated handler for parsing header of block '%s'", header_name);
             continue;
         }
-        *br = ch_br_jmp_rel(&ctx->br_cur_base, CH_FIELD_AT(header_data, td_loc_header, int32_t));
+        *br = ch_br_jmp_rel(&ctx->br_cur_base, header_loc);
         if (br->overflowed) {
             CH_PARSER_LOG_ERR(ctx, "bogus header location for block '%s'", header_name);
             continue;
@@ -110,6 +113,12 @@ static ch_err ch_restore_block_headers(ch_parsed_save_ctx* ctx, ch_block_body_in
 static ch_err ch_restore_save_tables(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
 {
     // CSaveRestore::ParseSaveTables
+
+    /*
+    * Entities are restored relative to this base. There is *another* base in restore_block_bodies which is only a
+    * *local* var. The entity body restore explicitly jumps relative to the base stored in the IRestore object.
+    */
+    ctx->br_cur_base = ctx->br;
 
     CH_RET_IF_ERR(ch_br_restore_class_by_name(ctx, "Save Header", "SAVE_HEADER", &sf->save_header));
     // TODO setup landmark info here from the header
@@ -147,7 +156,14 @@ static ch_err ch_restore_block_bodies(ch_parsed_save_ctx* ctx, const ch_block_bo
 {
     // CSaveRestoreBlockSet::Restore
 
-    ctx->br_cur_base = ch_br_split_skip(&ctx->br, body_info->bodies_size_bytes);
+    /*
+    * This restore function saves the base *locally* - it does not rebase the IRestore object. Most of the bodies simply
+    * read the data at this location. If a jump is made inside the body restore however, it does not jump relative to
+    * this base - it jumps relative to the base in the IRestore object which we set earlier.
+    */
+    ch_byte_reader br_local_base = ch_br_split_skip(&ctx->br, body_info->bodies_size_bytes);
+    ch_byte_reader br_after_bodies = ctx->br;
+
     for (size_t i = 0; i < CH_ARRAYSIZE(body_info->header_parsed); i++) {
         if (!body_info->header_parsed[i])
             continue;
@@ -155,7 +171,9 @@ static ch_err ch_restore_block_bodies(ch_parsed_save_ctx* ctx, const ch_block_bo
             CH_PARSER_LOG_ERR(ctx, "no associated handler for parsing body of block '%s'", ch_block_handlers[i].name);
             continue;
         }
-        ctx->br = ch_br_jmp_rel(&ctx->br_cur_base, body_info->body_loc[i]);
+        if (body_info->body_loc[i] == -1)
+            continue;
+        ctx->br = ch_br_jmp_rel(&br_local_base, body_info->body_loc[i]);
         if (ctx->br.overflowed) {
             CH_PARSER_LOG_ERR(ctx, "bogus body location for block '%s'", ch_block_handlers[i].name);
             continue;
@@ -171,9 +189,9 @@ static ch_err ch_restore_block_bodies(ch_parsed_save_ctx* ctx, const ch_block_bo
             continue;
         }
     }
-    ctx->br = ch_br_jmp_rel(&ctx->br_cur_base, body_info->bodies_size_bytes);
-    if (ctx->br.overflowed)
+    if (br_after_bodies.overflowed)
         return CH_ERR_READER_OVERFLOWED;
+    ctx->br = br_after_bodies;
     return CH_ERR_NONE;
 }
 

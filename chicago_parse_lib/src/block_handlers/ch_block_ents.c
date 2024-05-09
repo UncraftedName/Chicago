@@ -3,13 +3,91 @@
 #include "custom_restore/ch_utl_vector.h"
 #include "ch_block_ents.h"
 
-ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, ch_restored_entity* ent)
+static ch_err ch_restore_conditions(ch_parsed_save_ctx* ctx, ch_npc_schedule_conditions** schedule_conditions)
+{
+    CH_CHECKED_ALLOC(*schedule_conditions, ch_arena_calloc(ctx->arena, sizeof **schedule_conditions));
+
+    ch_str_ll** lists[] = {
+        &(**schedule_conditions).conditions,
+        &(**schedule_conditions).custom_interrupts,
+        &(**schedule_conditions).pre_ignore,
+        &(**schedule_conditions).ignore,
+    };
+
+    ch_byte_reader* br = &ctx->br;
+    ch_block block;
+    CH_RET_IF_ERR(ch_br_start_block(&ctx->st, br, &block));
+
+    for (size_t i = 0; i < CH_ARRAYSIZE(lists); i++) {
+        for (ch_str_ll** ll = lists[i];; ll = &(**ll).next) {
+            size_t len = ch_br_strlen(br);
+            if (len == 0)
+                break;
+            CH_CHECKED_ALLOC(*ll, ch_arena_calloc(ctx->arena, sizeof(**ll) + len + 1));
+            (**ll).str = (char*)(*ll + 1);
+            ch_br_read(br, (**ll).str, len);
+            ch_br_skip_capped(br, 1);
+        }
+        ch_br_skip_capped(br, 1);
+    }
+
+    return ch_br_end_block(br, &block, true);
+}
+
+static ch_err ch_restore_navigator(ch_parsed_save_ctx* ctx, ch_npc_navigator** navigator)
+{
+    CH_CHECKED_ALLOC(*navigator, ch_arena_calloc(ctx->arena, sizeof **navigator));
+    ch_block block;
+    CH_RET_IF_ERR(ch_br_start_block(&ctx->st, &ctx->br, &block));
+    (**navigator).version = ch_br_read_16(&ctx->br);
+    bool ok = (**navigator).version == CH_NAVIGATOR_SAVE_VERSION;
+
+    ch_datamap* dm = NULL;
+    ch_err err = CH_ERR_NONE;
+    if (ok) {
+        err = ch_lookup_datamap(ctx, "AI_Waypoint_t", &dm);
+        ok = !err;
+    }
+    if (ok) {
+        err = ch_cr_utl_vector_restore(ctx, FIELD_EMBEDDED, dm, &(**navigator).path_vec);
+        ok = !err;
+    }
+    if (err == CH_ERR_OUT_OF_MEMORY)
+        return err;
+
+    return ch_br_end_block(&ctx->br, &block, false);
+}
+
+// TODO should be possible to check the vtable of entities and check if there's some custom restore funcs, probably too much effort...
+// TODO liquid portals lololol
+static ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, ch_restored_entity* ent)
 {
     // CEntitySaveRestoreBlockHandler::RestoreEntity
 
     CH_RET_IF_ERR(ch_lookup_datamap(ctx, classname, &ent->class_info.dm));
 
     printf("restoring %s (%s)\n", classname, ent->class_info.dm->class_name);
+
+    if (ch_dm_inherts_from(ent->class_info.dm, "CAI_BaseNPC")) {
+        // CAI_BaseNPC::Restore
+        CH_CHECKED_ALLOC(ent->npc_header, ch_arena_calloc(ctx->arena, sizeof(*ent->npc_header)));
+        CH_RET_IF_ERR(
+            ch_br_restore_class_by_name(ctx, NULL, "AIExtendedSaveHeader_t", &ent->npc_header->extended_header));
+        ch_type_description* td_version;
+        CH_RET_IF_ERR(ch_find_field(ent->npc_header->extended_header.dm, "version", true, &td_version));
+        int16_t version = CH_FIELD_AT(ent->npc_header->extended_header.data, td_version, int16_t);
+        if (version >= CH_HEADER_AI_FIRST_VERSION_WITH_CONDITIONS)
+            CH_RET_IF_ERR(ch_restore_conditions(ctx, &ent->npc_header->schedule_conditions));
+        if (version >= CH_HEADER_AI_FIRST_VERSION_WITH_NAVIGATOR_SAVE)
+            CH_RET_IF_ERR(ch_restore_navigator(ctx, &ent->npc_header->navigator));
+    }
+
+    CH_CHECKED_ALLOC(ent->class_info.data, ch_arena_calloc(ctx->arena, ent->class_info.dm->ch_size));
+    CH_RET_IF_ERR(ch_br_restore_recursive(ctx, ent->class_info.dm, ent->class_info.data));
+    // TODO CBaseEntity fixups
+
+    // TODO speaker
+
     return CH_ERR_NONE;
 }
 
@@ -25,9 +103,7 @@ ch_err ch_parse_entity_block_header(ch_parsed_save_ctx* ctx)
 
     CH_RET_IF_ERR(ch_lookup_datamap(ctx, "entitytable_t", &ent_table->dm));
 
-    ent_table->data = ch_arena_calloc(ctx->arena, CH_RCA_DATA_SIZE(*ent_table));
-    if (!ent_table->data)
-        return CH_ERR_OUT_OF_MEMORY;
+    CH_CHECKED_ALLOC(ent_table->data, ch_arena_calloc(ctx->arena, CH_RCA_DATA_SIZE(*ent_table)));
 
     // initialize some int fields w/ -1
     // the game also inits restoreentityindex but that's not part of the datamap TODO could try to figure out the restored index
@@ -52,9 +128,8 @@ ch_err ch_parse_entity_block_body(ch_parsed_save_ctx* ctx)
     ch_block_entities* block = &ctx->sf_save_data->blocks.entities;
     const ch_datamap* dm_ent_table = block->entity_table.dm;
 
-    block->entities = ch_arena_calloc(ctx->arena, sizeof(ch_restored_entity) * block->entity_table.n_elems);
-    if (!block->entities)
-        return CH_ERR_OUT_OF_MEMORY;
+    CH_CHECKED_ALLOC(block->entities,
+                     ch_arena_calloc(ctx->arena, sizeof(ch_restored_entity) * block->entity_table.n_elems));
 
     ch_type_description *td_classname, *td_size, *td_loc;
     CH_RET_IF_ERR(ch_find_field_log_if_dne(ctx, dm_ent_table, "classname", true, &td_classname, FIELD_STRING));
