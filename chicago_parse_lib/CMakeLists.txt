@@ -4,6 +4,7 @@ set(CMAKE_C_STANDARD 23)
 include_directories(
 	src
 	../shared
+	../shared/thirdparty/msgpack/include
 )
 
 file(
@@ -16,4 +17,4 @@ file(
 add_library(chicago_parse_lib STATIC ${SRC_FILES})
 target_compile_definitions(chicago_parse_lib PRIVATE _CRT_SECURE_NO_WARNINGS)
 add_dependencies(chicago_parse_lib hashmap)
-target_link_libraries(chicago_parse_lib PRIVATE hashmap)
+target_link_libraries(chicago_parse_lib PRIVATE hashmap msgpack)

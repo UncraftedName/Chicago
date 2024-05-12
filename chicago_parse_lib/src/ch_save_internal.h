@@ -5,6 +5,7 @@
 
 #include "ch_byte_reader.h"
 #include "ch_save.h"
+#include "ch_dump.h"
 
 #define CH_ARRAYSIZE(a) (sizeof(a) / sizeof(*(a)))
 
@@ -72,3 +73,5 @@ ch_err ch_find_field_log_if_dne(ch_parsed_save_ctx* ctx,
                                 bool recurse_base_classes,
                                 const ch_type_description** field,
                                 ch_field_type expected_field_type);
+
+extern const ch_dump_truck g_dump_tag_fns;

@@ -29,14 +29,14 @@ ch_err ch_parse_hl2(ch_parsed_save_ctx* ctx, ch_sf_adjacent_client_state* sf)
     ch_br_read(br, &sf->tag, sizeof sf->tag);
     const ch_tag expected_tag = {.id = {'V', 'A', 'L', 'V'}, .version = 0x73};
     if (memcmp(&sf->tag, &expected_tag, sizeof expected_tag))
-        return CC_ERR_HL2_BAD_TAG;
+        return CH_ERR_HL2_BAD_TAG;
 
     ch_hl2_sections sections = {0};
 
     if (ch_br_peak_u32(br) == CH_SECTION_MAGIC_NUMBER) {
         ch_br_skip(br, sizeof(uint32_t));
         if (ch_br_read_32(br) != CH_SECTION_VERSION_NUMBER)
-            return CC_ERR_HL2_BAD_SECTION_HEADER;
+            return CH_ERR_HL2_BAD_SECTION_HEADER;
         if (!ch_br_read(br, &sections, sizeof sections))
             return CH_ERR_READER_OVERFLOWED;
     } else {
@@ -50,3 +50,5 @@ ch_err ch_parse_hl2(ch_parsed_save_ctx* ctx, ch_sf_adjacent_client_state* sf)
 
     return CH_ERR_NONE;
 }
+
+const ch_dump_truck g_dump_hl2_fns = {0};

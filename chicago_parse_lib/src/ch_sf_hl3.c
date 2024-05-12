@@ -21,3 +21,5 @@ ch_err ch_parse_hl3(ch_parsed_save_ctx* ctx, ch_sf_entity_patch* sf)
 
     return CH_ERR_NONE;
 }
+
+const ch_dump_truck g_dump_hl3_fns = {0};
