@@ -41,5 +41,3 @@ static ch_err ch_br_restore_class_by_name(ch_parsed_save_ctx* ctx,
     else
         return ch_br_restore_recursive(ctx, restored_class->dm, restored_class->data);
 }
-
-extern const ch_dump_truck g_dump_restored_class_fns;

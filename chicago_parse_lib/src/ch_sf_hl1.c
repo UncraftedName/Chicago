@@ -225,5 +225,3 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
 
     return CH_ERR_NONE;
 }
-
-const ch_dump_truck g_dump_hl1_fns = {0};

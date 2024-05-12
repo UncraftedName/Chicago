@@ -3,7 +3,7 @@
 #include <stdio.h>
 
 #include "thirdparty/msgpack/include/ch_msgpack.h"
-#include "ch_save.h"
+#include "ch_save_internal.h"
 
 typedef struct ch_dump_text {
     FILE* f;
@@ -36,12 +36,12 @@ typedef struct ch_dump_msgpack {
 typedef ch_err (*ch_dump_text_fn)(ch_dump_text* dump, void* user_data);
 typedef ch_err (*ch_dump_msgpack_fn)(ch_dump_msgpack* dump, void* user_data);
 
-typedef struct ch_dump_truck {
+typedef struct ch_dump_fns {
     ch_dump_text_fn text;
     ch_dump_msgpack_fn msgpack;
-} ch_dump_truck;
+} ch_dump_fns;
 
-extern const ch_dump_truck g_dump_default_fns;
+extern const ch_dump_fns g_dump_default_fns;
 
 #define _CH_DUMP_CALL(dump_fns, dump, user_data, dump_type) \
     (dump_fns.dump_type ? dump_fns.dump_type(dump, user_data) : g_dump_default_fns.dump_type(dump, #dump_fns))

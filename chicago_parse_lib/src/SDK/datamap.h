@@ -48,8 +48,6 @@ typedef enum ch_field_type {
 struct ch_type_description;
 
 size_t ch_field_type_byte_size(ch_field_type ft);
-// use the returned string before calling the function again
-const char* ch_create_field_type_str(const struct ch_type_description* td);
 
 // This field is masked for global entity save/restore
 #define FTYPEDESC_GLOBAL 0x0001

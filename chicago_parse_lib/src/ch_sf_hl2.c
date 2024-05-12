@@ -50,5 +50,3 @@ ch_err ch_parse_hl2(ch_parsed_save_ctx* ctx, ch_sf_adjacent_client_state* sf)
 
     return CH_ERR_NONE;
 }
-
-const ch_dump_truck g_dump_hl2_fns = {0};

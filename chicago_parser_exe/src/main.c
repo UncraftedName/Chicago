@@ -6,8 +6,6 @@
 #include "ch_save.h"
 #include "ch_archive.h"
 
-#include "ch_dump.h"
-
 int main(void)
 {
     ch_datamap_collection_info collection_save_info = {
