@@ -91,15 +91,17 @@ ch_err ch_find_field_log_if_dne(ch_parsed_save_ctx* ctx,
     assert(field_name && field);
     ch_err err = ch_find_field(dm, field_name, recurse_base_classes, field);
     if (err) {
-        CH_PARSER_LOG_ERR(ctx, "failed to find filed '%s' in datamap '%s'", field_name, dm->class_name);
+        if (ctx)
+            CH_PARSER_LOG_ERR(ctx, "failed to find filed '%s' in datamap '%s'", field_name, dm->class_name);
         return err;
     } else if ((**field).type != expected_field_type) {
-        CH_PARSER_LOG_ERR(ctx,
-                          "found field '%s' in datamap '%s' but it has type %d, expected %d",
-                          (**field).name,
-                          dm->class_name,
-                          (**field).type,
-                          expected_field_type);
+        if (ctx)
+            CH_PARSER_LOG_ERR(ctx,
+                              "found field '%s' in datamap '%s' but it has type %d, expected %d",
+                              (**field).name,
+                              dm->class_name,
+                              (**field).type,
+                              expected_field_type);
         return CH_ERR_BAD_FIELD_TYPE;
     }
     return CH_ERR_NONE;

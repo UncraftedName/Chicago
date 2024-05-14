@@ -135,11 +135,8 @@ static ch_err ch_restore_save_tables(ch_parsed_save_ctx* ctx, ch_sf_save_data* s
     CH_RET_IF_ERR(ch_lookup_datamap(ctx, "levellist_t", &sf->adjacent_levels.dm));
     CH_RET_IF_ERR(ch_lookup_datamap(ctx, "SAVELIGHTSTYLE", &sf->light_styles.dm));
 
-    sf->adjacent_levels.data = ch_arena_calloc(ctx->arena, CH_RCA_DATA_SIZE(sf->adjacent_levels));
-    sf->light_styles.data = ch_arena_calloc(ctx->arena, CH_RCA_DATA_SIZE(sf->light_styles));
-
-    if (!sf->adjacent_levels.data || !sf->light_styles.data)
-        return CH_ERR_OUT_OF_MEMORY;
+    CH_CHECKED_ALLOC(sf->adjacent_levels.data, ch_arena_calloc(ctx->arena, CH_RCA_DATA_SIZE(sf->adjacent_levels)));
+    CH_CHECKED_ALLOC(sf->light_styles.data, ch_arena_calloc(ctx->arena, CH_RCA_DATA_SIZE(sf->light_styles)));
 
     for (size_t i = 0; i < sf->adjacent_levels.n_elems; i++)
         CH_RET_IF_ERR(

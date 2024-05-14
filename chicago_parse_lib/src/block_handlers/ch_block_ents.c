@@ -60,13 +60,14 @@ static ch_err ch_restore_navigator(ch_parsed_save_ctx* ctx, ch_npc_navigator** n
 
 // TODO should be possible to check the vtable of entities and check if there's some custom restore funcs, probably too much effort...
 // TODO liquid portals lololol
-static ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, ch_restored_entity* ent)
+static ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, ch_restored_entity** pp_ent)
 {
     // CEntitySaveRestoreBlockHandler::RestoreEntity
 
+    CH_CHECKED_ALLOC(*pp_ent, ch_arena_calloc(ctx->arena, sizeof **pp_ent));
+    ch_restored_entity* ent = *pp_ent;
+    ent->classname = classname;
     CH_RET_IF_ERR(ch_lookup_datamap(ctx, classname, &ent->class_info.dm));
-
-    printf("restoring %s (%s)\n", classname, ent->class_info.dm->class_name);
 
     if (ch_dm_inherts_from(ent->class_info.dm, "CAI_BaseNPC")) {
         // CAI_BaseNPC::Restore
@@ -129,7 +130,7 @@ ch_err ch_parse_entity_block_body(ch_parsed_save_ctx* ctx)
     const ch_datamap* dm_ent_table = block->entity_table.dm;
 
     CH_CHECKED_ALLOC(block->entities,
-                     ch_arena_calloc(ctx->arena, sizeof(ch_restored_entity) * block->entity_table.n_elems));
+                     ch_arena_calloc(ctx->arena, sizeof(ch_restored_entity*) * block->entity_table.n_elems));
 
     ch_type_description *td_classname, *td_size, *td_loc;
     CH_RET_IF_ERR(ch_find_field_log_if_dne(ctx, dm_ent_table, "classname", true, &td_classname, FIELD_STRING));

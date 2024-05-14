@@ -12,41 +12,39 @@
 #define CH_ENT_ENTRY_MASK (CH_NUM_ENT_ENTRIES - 1)
 #define CH_NUM_SERIAL_NUM_BITS (32 - CH_NUM_ENT_ENTRY_BITS)
 
-static const char* ch_create_field_type_str(const ch_type_description* td)
+const char* ch_field_string(ch_field_type ft)
 {
-    const char* base_type_str = NULL;
-
-#define CH_BASE_STR_CASE(type, str) \
-    case type:                      \
-        base_type_str = str;        \
+#define CH_FT_CASE(type, str) \
+    case type:                \
+        return str;           \
         break
 
-    switch (td->type) {
-        CH_BASE_STR_CASE(FIELD_FLOAT, "f32");
-        CH_BASE_STR_CASE(FIELD_STRING, "string");
-        CH_BASE_STR_CASE(FIELD_VECTOR, "vec3f");
-        CH_BASE_STR_CASE(FIELD_QUATERNION, "quaternion");
-        CH_BASE_STR_CASE(FIELD_INTEGER, "i32");
-        CH_BASE_STR_CASE(FIELD_BOOLEAN, "bool");
-        CH_BASE_STR_CASE(FIELD_SHORT, "i16");
-        CH_BASE_STR_CASE(FIELD_CHARACTER, "char");
-        CH_BASE_STR_CASE(FIELD_COLOR32, "color32");
-        CH_BASE_STR_CASE(FIELD_CLASSPTR, "ent_index");
-        CH_BASE_STR_CASE(FIELD_EHANDLE, "ehandle");
-        CH_BASE_STR_CASE(FIELD_EDICT, "edict_t");
-        CH_BASE_STR_CASE(FIELD_POSITION_VECTOR, "vec3f");
-        CH_BASE_STR_CASE(FIELD_TIME, "time");
-        CH_BASE_STR_CASE(FIELD_TICK, "tick");
-        CH_BASE_STR_CASE(FIELD_MODELNAME, "model");
-        CH_BASE_STR_CASE(FIELD_SOUNDNAME, "sound_name");
-        CH_BASE_STR_CASE(FIELD_FUNCTION, "func_ptr");
-        CH_BASE_STR_CASE(FIELD_VMATRIX, "VMatrix");
-        CH_BASE_STR_CASE(FIELD_VMATRIX_WORLDSPACE, "VMatrix");
-        CH_BASE_STR_CASE(FIELD_MATRIX3X4_WORLDSPACE, "matrix3x4_t");
-        CH_BASE_STR_CASE(FIELD_INTERVAL, "interval");
-        CH_BASE_STR_CASE(FIELD_MODELINDEX, "model");
-        CH_BASE_STR_CASE(FIELD_MATERIALINDEX, "material");
-        CH_BASE_STR_CASE(FIELD_VECTOR2D, "vec2f");
+    switch (ft) {
+        CH_FT_CASE(FIELD_FLOAT, "f32");
+        CH_FT_CASE(FIELD_STRING, "string");
+        CH_FT_CASE(FIELD_VECTOR, "vec3f");
+        CH_FT_CASE(FIELD_QUATERNION, "quaternion");
+        CH_FT_CASE(FIELD_INTEGER, "i32");
+        CH_FT_CASE(FIELD_BOOLEAN, "bool");
+        CH_FT_CASE(FIELD_SHORT, "i16");
+        CH_FT_CASE(FIELD_CHARACTER, "char");
+        CH_FT_CASE(FIELD_COLOR32, "color32");
+        CH_FT_CASE(FIELD_CLASSPTR, "ent_index");
+        CH_FT_CASE(FIELD_EHANDLE, "ehandle");
+        CH_FT_CASE(FIELD_EDICT, "edict_t");
+        CH_FT_CASE(FIELD_POSITION_VECTOR, "vec3f");
+        CH_FT_CASE(FIELD_TIME, "time");
+        CH_FT_CASE(FIELD_TICK, "tick");
+        CH_FT_CASE(FIELD_MODELNAME, "model");
+        CH_FT_CASE(FIELD_SOUNDNAME, "sound_name");
+        CH_FT_CASE(FIELD_FUNCTION, "func_ptr");
+        CH_FT_CASE(FIELD_VMATRIX, "VMatrix");
+        CH_FT_CASE(FIELD_VMATRIX_WORLDSPACE, "VMatrix");
+        CH_FT_CASE(FIELD_MATRIX3X4_WORLDSPACE, "matrix3x4_t");
+        CH_FT_CASE(FIELD_INTERVAL, "interval");
+        CH_FT_CASE(FIELD_MODELINDEX, "model");
+        CH_FT_CASE(FIELD_MATERIALINDEX, "material");
+        CH_FT_CASE(FIELD_VECTOR2D, "vec2f");
         case FIELD_CUSTOM:
             return "CUSTOM";
         case FIELD_EMBEDDED:
@@ -58,11 +56,15 @@ static const char* ch_create_field_type_str(const ch_type_description* td)
             return "UNKNOWN";
     }
 
-#undef CH_BASE_STR_CASE
+#undef CH_FT_CASE
+}
 
+// make sure to save the string before calling again
+static const char* ch_create_field_type_str(const ch_type_description* td)
+{
+    const char* base_type_str = ch_field_string(td->type);
     if (td->n_elems == 1)
         return base_type_str;
-
     static char buf[32];
     int len = snprintf(buf, sizeof buf, "%s[%d]", base_type_str, td->n_elems);
     assert(len > 0 && len < sizeof(buf));
@@ -122,29 +124,14 @@ static const void* ch_memnz(const void* mem, size_t n_max)
     return NULL;
 }
 
-ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* dm, const unsigned char* data);
-
-static ch_err ch_dump_field_to_text(ch_dump_text* dump,
-                                    const ch_type_description* td,
-                                    const unsigned char* field_ptr,
-                                    bool* found)
+ch_err ch_dump_field_val_text(ch_dump_text* dump,
+                              ch_field_type ft,
+                              size_t total_size_bytes,
+                              const unsigned char* field_ptr)
 {
-    if (td->type == FIELD_CUSTOM) {
-        *found = true;
-        return ch_dump_text_printf(dump, "CUSTOM %s: (NOT IMPLEMENTED)\n", td->name);
-    }
-    if (td->type == FIELD_EMBEDDED) {
-        *found = true;
-        CH_RET_IF_ERR(ch_dump_text_printf(dump, "embedded "));
-        return ch_dump_restored_class_text(dump, td->embedded_map, field_ptr);
-    }
-    if ((dump->flags & CH_DF_IGNORE_ZERO_FIELDS) && !ch_memnz(field_ptr, td->total_size_bytes))
-        return CH_ERR_NONE;
-    *found = true;
-    CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s %s: ", ch_create_field_type_str(td), td->name));
-    ch_field_type ft_reduced = ch_reduce_field_type_for_printing(td->type);
+    ch_field_type ft_reduced = ch_reduce_field_type_for_printing(ft);
     size_t reduced_byte_size = ch_field_type_byte_size(ft_reduced);
-    size_t n_reduced_elems = td->total_size_bytes / reduced_byte_size;
+    size_t n_reduced_elems = total_size_bytes / reduced_byte_size;
 
     if (ft_reduced == FIELD_CHARACTER) {
         // determine if a char array is a printable ascii string
@@ -158,7 +145,10 @@ static ch_err ch_dump_field_to_text(ch_dump_text* dump,
         // it's ascii - treat as a string, otherwise print the vals as hex
 
         if (is_ascii)*/
-        return ch_dump_text_printf(dump, "\"%.*s\"\n", td->total_size_bytes, field_ptr);
+
+        // for now, we'll pretend that one character fields are not strings
+        if (n_reduced_elems != 1)
+            return ch_dump_text_printf(dump, "\"%.*s\"\n", total_size_bytes, field_ptr);
 
         // TODO doesn't seem like there's a sensible way to figure out if this is a string...
         // add some logic to manually display this in bytes for certain fields
@@ -189,7 +179,10 @@ static ch_err ch_dump_field_to_text(ch_dump_text* dump,
                 CH_RET_IF_ERR(ch_dump_text_printf(dump, "%f", field_holder.f[i]));
                 break;
             case FIELD_STRING:
-                CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s", field_holder.s[i] ? field_holder.s[i] : "<null>"));
+                if (field_holder.s[i])
+                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "\"%s\"", field_holder.s[i]));
+                else
+                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "<null>"));
                 break;
             case FIELD_INTEGER:
                 CH_RET_IF_ERR(ch_dump_text_printf(dump, "%" PRId32, field_holder.i32[i]));
@@ -205,7 +198,7 @@ static ch_err ch_dump_field_to_text(ch_dump_text* dump,
                 break;
             case FIELD_EHANDLE:
                 uint32_t eh = field_holder.u32[i];
-                if (eh == CH_SF_INVALID)
+                if (eh == CH_INVALID_HANDLE_INDEX)
                     CH_RET_IF_ERR(ch_dump_text_printf(dump, "{null}"));
                 else
                     CH_RET_IF_ERR(ch_dump_text_printf(dump,
@@ -228,7 +221,7 @@ static ch_err ch_dump_field_to_text(ch_dump_text* dump,
                 break;
         }
 #pragma warning(pop)
-        if (display_as_array)
+        if (display_as_array && i != n_reduced_elems - 1)
             CH_RET_IF_ERR(ch_dump_text_printf(dump, ", "));
     }
 
@@ -237,12 +230,12 @@ static ch_err ch_dump_field_to_text(ch_dump_text* dump,
     return ch_dump_text_printf(dump, "\n");
 }
 
-ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* dm, const unsigned char* data)
+static ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* dm, const unsigned char* data)
 {
     if (dump->flags & CH_DF_SORT_FIELDS_BY_OFFSET) {
         assert(0);
     } else {
-        for (const ch_datamap* dm_it = dm; dm; dm = dm->base_map) {
+        for (const ch_datamap* dm_it = dm; dm_it; dm_it = dm_it->base_map) {
             if (dm_it == dm)
                 CH_RET_IF_ERR(ch_dump_text_printf(dump, "class %s:\n", dm_it->class_name));
             else
@@ -250,10 +243,25 @@ ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* dm, con
             dump->indent_lvl++;
             bool any = false;
             for (size_t i = 0; i < dm_it->n_fields; i++) {
-                CH_RET_IF_ERR(ch_dump_field_to_text(dump,
-                                                    &dm_it->fields[i],
-                                                    CH_FIELD_AT_PTR(data, &dm_it->fields[i], unsigned char),
-                                                    &any));
+                const ch_type_description* td = &dm_it->fields[i];
+                const unsigned char* field_ptr = CH_FIELD_AT_PTR(data, td, unsigned char);
+
+                if (td->type == FIELD_CUSTOM) {
+                    any = true;
+                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "CUSTOM %s: (NOT IMPLEMENTED)\n", td->name));
+                    continue;
+                }
+                if (td->type == FIELD_EMBEDDED) {
+                    any = true;
+                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "embedded "));
+                    CH_RET_IF_ERR(ch_dump_restored_class_text(dump, td->embedded_map, field_ptr));
+                    continue;
+                }
+                if ((dump->flags & CH_DF_IGNORE_ZERO_FIELDS) && !ch_memnz(field_ptr, td->total_size_bytes))
+                    continue;
+                any = true;
+                CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s %s: ", ch_create_field_type_str(td), td->name));
+                CH_RET_IF_ERR(ch_dump_field_val_text(dump, td->type, td->total_size_bytes, field_ptr));
             }
             if (!any)
                 CH_RET_IF_ERR(ch_dump_text_printf(dump, "no fields\n"));
@@ -263,6 +271,6 @@ ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* dm, con
     return CH_ERR_NONE;
 }
 
-CH_DEFINE_DUMP_FNS(restored_class, g_dump_restored_class_fns) = {
+const ch_dump_restored_class_fns g_dump_restored_class_fns = {
     .text = ch_dump_restored_class_text,
 };

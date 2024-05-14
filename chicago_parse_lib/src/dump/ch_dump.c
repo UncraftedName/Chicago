@@ -57,7 +57,7 @@ static ch_err ch_dump_default_msgpack(ch_dump_msgpack* dump, const char* dump_na
     return CH_ERR_NONE;
 }
 
-CH_DEFINE_DUMP_FNS(default, g_dump_default_fns) = {
+const ch_dump_default_fns g_dump_default_fns = {
     .text = ch_dump_default_text,
     .msgpack = ch_dump_default_msgpack,
 };

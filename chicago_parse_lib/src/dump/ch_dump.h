@@ -51,8 +51,6 @@ typedef struct ch_dump_msgpack {
     } ch_dump_##component_name##_fns;                                       \
     extern const ch_dump_##component_name##_fns global_fns_name;
 
-#define CH_DEFINE_DUMP_FNS(component_name, global_fns_name) const ch_dump_##component_name##_fns global_fns_name
-
 CH_DECLARE_DUMP_FNS(default, g_dump_default_fns, const char* dump_fns_name);
 
 #define _CH_DUMP_CALL(dump_fns, dump, dump_type, ...) \

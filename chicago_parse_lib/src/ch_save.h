@@ -139,6 +139,7 @@ typedef struct ch_custom_ent_restore_speaker {
 } ch_custom_ent_restore_speaker;
 
 typedef struct ch_restored_entity {
+    const char* classname;
     ch_restored_class class_info;
     ch_custom_ent_restore_base_npc* npc_header;  // only if the entity inherits from CAI_BaseNPC
     ch_custom_ent_restore_speaker* speaker_info; // only if the entity inherits from CSpeaker
@@ -146,7 +147,7 @@ typedef struct ch_restored_entity {
 
 typedef struct ch_block_entities {
     ch_restored_class_arr entity_table;
-    ch_restored_entity* entities; // has entity_table.n_elems entities
+    ch_restored_entity** entities; // has entity_table.n_elems entities
 } ch_block_entities;
 
 typedef struct ch_sf_save_data {
@@ -155,6 +156,7 @@ typedef struct ch_sf_save_data {
     ch_restored_class_arr adjacent_levels;
     ch_restored_class_arr light_styles;
     struct {
+        // TODO automatically get the block name into here, also only allocate when this exists
         ch_block_entities entities;
     } blocks;
 } ch_sf_save_data;
