@@ -176,7 +176,7 @@ ch_err ch_dump_field_val_text(ch_dump_text* dump,
 #pragma warning(disable : 4061)
         switch (ft_reduced) {
             case FIELD_FLOAT:
-                CH_RET_IF_ERR(ch_dump_text_printf(dump, "%f", field_holder.f[i]));
+                CH_RET_IF_ERR(ch_dump_text_printf(dump, "%#g", field_holder.f[i]));
                 break;
             case FIELD_STRING:
                 if (field_holder.s[i])
@@ -230,15 +230,13 @@ ch_err ch_dump_field_val_text(ch_dump_text* dump,
     return ch_dump_text_printf(dump, "\n");
 }
 
-static ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* dm, const unsigned char* data)
+static ch_err ch_dump_restored_fields_text(ch_dump_text* dump, const ch_datamap* dm, const unsigned char* data)
 {
     if (dump->flags & CH_DF_SORT_FIELDS_BY_OFFSET) {
         assert(0);
     } else {
         for (const ch_datamap* dm_it = dm; dm_it; dm_it = dm_it->base_map) {
-            if (dm_it == dm)
-                CH_RET_IF_ERR(ch_dump_text_printf(dump, "class %s:\n", dm_it->class_name));
-            else
+            if (dm_it != dm)
                 CH_RET_IF_ERR(ch_dump_text_printf(dump, "inherited from %s:\n", dm_it->class_name));
             dump->indent_lvl++;
             bool any = false;
@@ -246,22 +244,22 @@ static ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* 
                 const ch_type_description* td = &dm_it->fields[i];
                 const unsigned char* field_ptr = CH_FIELD_AT_PTR(data, td, unsigned char);
 
+                if ((dump->flags & CH_DF_IGNORE_ZERO_FIELDS) && !ch_memnz(field_ptr, td->total_size_bytes))
+                    continue;
+
+                any = true;
+
                 if (td->type == FIELD_CUSTOM) {
-                    any = true;
                     CH_RET_IF_ERR(ch_dump_text_printf(dump, "CUSTOM %s: (NOT IMPLEMENTED)\n", td->name));
                     continue;
                 }
                 if (td->type == FIELD_EMBEDDED) {
-                    any = true;
-                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "embedded "));
-                    CH_RET_IF_ERR(ch_dump_restored_class_text(dump, td->embedded_map, field_ptr));
-                    continue;
+                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s %s:\n", td->embedded_map->class_name, td->name));
+                    CH_RET_IF_ERR(ch_dump_restored_fields_text(dump, td->embedded_map, field_ptr));
+                } else {
+                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s %s: ", ch_create_field_type_str(td), td->name));
+                    CH_RET_IF_ERR(ch_dump_field_val_text(dump, td->type, td->total_size_bytes, field_ptr));
                 }
-                if ((dump->flags & CH_DF_IGNORE_ZERO_FIELDS) && !ch_memnz(field_ptr, td->total_size_bytes))
-                    continue;
-                any = true;
-                CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s %s: ", ch_create_field_type_str(td), td->name));
-                CH_RET_IF_ERR(ch_dump_field_val_text(dump, td->type, td->total_size_bytes, field_ptr));
             }
             if (!any)
                 CH_RET_IF_ERR(ch_dump_text_printf(dump, "no fields\n"));
@@ -269,6 +267,12 @@ static ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* 
         }
     }
     return CH_ERR_NONE;
+}
+
+static ch_err ch_dump_restored_class_text(ch_dump_text* dump, const ch_datamap* dm, const unsigned char* data)
+{
+    CH_RET_IF_ERR(ch_dump_text_printf(dump, "class %s:\n", dm->class_name));
+    return ch_dump_restored_fields_text(dump, dm, data);
 }
 
 const ch_dump_restored_class_fns g_dump_restored_class_fns = {
