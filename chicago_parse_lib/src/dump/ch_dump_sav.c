@@ -39,8 +39,8 @@ static ch_err ch_dump_sav_text(ch_dump_text* dump, const ch_parsed_save_data* sa
     if (save_data->errors_ll) {
         CH_RET_IF_ERR(ch_dump_text_printf(dump, "\n\nErrors generated during parsing:\n"));
         dump->indent_lvl++;
-        for (ch_parse_save_error* err = save_data->errors_ll; err; err = err->next)
-            CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s\n", err->err_str));
+        for (ch_str_ll* err = save_data->errors_ll; err; err = err->next)
+            CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s\n", err->str));
         dump->indent_lvl--;
     }
     return CH_ERR_NONE;

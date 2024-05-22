@@ -35,7 +35,7 @@ typedef struct ch_parsed_save_ctx {
     ch_arena* arena; // same pointer as in the save data
     ch_byte_reader br;
     ch_symbol_table st;
-    ch_parse_save_error* last_error;
+    ch_str_ll* last_error;
     // some stuff is stored relative to a 'base' in the file and needs to be saved across function calls
     ch_byte_reader br_cur_base;
     ch_sf_save_data* sf_save_data;

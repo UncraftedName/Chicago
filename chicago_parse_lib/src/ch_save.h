@@ -215,11 +215,6 @@ typedef struct ch_parse_info {
     size_t n_bytes;
 } ch_parse_info;
 
-typedef struct ch_parse_save_error {
-    struct ch_parse_save_error* next;
-    const char* err_str;
-} ch_parse_save_error;
-
 // make sure to use ch_parsed_save_new to create this class :)
 typedef struct ch_parsed_save_data {
     ch_tag tag;
@@ -227,7 +222,7 @@ typedef struct ch_parsed_save_data {
     ch_restored_class global_state;
     ch_state_file* state_files;
     size_t n_state_files;
-    ch_parse_save_error* errors_ll;
+    ch_str_ll* errors_ll;
     ch_arena* _arena;
 } ch_parsed_save_data;
 

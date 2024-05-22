@@ -13,24 +13,24 @@ ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...)
     va_start(va, fmt);
     int len = vsnprintf(NULL, 0, fmt, va);
     va_end(va);
-    ch_parse_save_error* pse = ch_arena_alloc(ctx->arena, sizeof(ch_parse_save_error) + (len < 0 ? 0 : len + 1));
-    if (!pse)
+    ch_str_ll* err_ll = ch_arena_alloc(ctx->arena, sizeof(ch_str_ll) + (len < 0 ? 0 : len + 1));
+    if (!err_ll)
         return CH_ERR_OUT_OF_MEMORY;
     if (len < 0) {
-        pse->err_str = "ERROR ENCODING LOG STRING";
+        err_ll->str = "ERROR ENCODING LOG STRING";
     } else {
-        pse->err_str = (const char*)(pse + 1);
+        err_ll->str = (char*)(err_ll + 1);
         va_start(va, fmt);
-        vsnprintf((char*)pse->err_str, len + 1, fmt, va);
+        vsnprintf(err_ll->str, len + 1, fmt, va);
         va_end(va);
     }
-    printf("%s\n", pse->err_str);
+    printf("%s\n", err_ll->str);
     if (ctx->last_error)
-        ctx->last_error->next = pse;
-    ctx->last_error = pse;
+        ctx->last_error->next = err_ll;
+    ctx->last_error = err_ll;
     if (!ctx->data->errors_ll)
-        ctx->data->errors_ll = pse;
-    pse->next = NULL;
+        ctx->data->errors_ll = err_ll;
+    err_ll->next = NULL;
     return CH_ERR_NONE;
 }
 
