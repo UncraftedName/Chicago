@@ -57,7 +57,10 @@ void ch_add_to_ch_archive(const char* file_name, ch_byte_array extra);
 * within the loaded file. Only the datamap, typedescs, & string pointers are set. If
 * this function returns OK, then the array can be casted to a ch_datamap_collection*.
 */
-ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array collection);
+ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array collection,
+                                                          ch_datamap_collection_header** header_out);
+
+ch_archive_result ch_create_collection_lookup(const ch_datamap_collection_header* header, ch_datamap_collection* out);
 
 ch_archive_result ch_load_file(const char* file_path, ch_byte_array* ba, size_t max_allowed_size);
 

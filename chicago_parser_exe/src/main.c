@@ -5,6 +5,7 @@
 #include "ch_recv.h"
 #include "ch_save.h"
 #include "ch_archive.h"
+#include "custom_restore/registration/ch_reg.h"
 
 int main(void)
 {
@@ -22,15 +23,20 @@ int main(void)
     ch_byte_array ba_col;
     ch_archive_result res = ch_load_file("datamaps.chic", &ba_col, CH_COLLECTION_FILE_MAX_SIZE);
     assert(res == CH_ARCH_OK);
-    res = ch_verify_and_fixup_collection_pointers(ba_col);
+    ch_datamap_collection_header* header;
+    res = ch_verify_and_fixup_collection_pointers(ba_col, &header);
     assert(res == CH_ARCH_OK);
-    ch_datamap_collection* col = (ch_datamap_collection*)ba_col.arr;
+    ch_datamap_collection col;
+    res = ch_create_collection_lookup(header, &col);
+    assert(res == CH_ARCH_OK);
+    res = ch_register_all(header, &col);
+    assert(res == CH_ERR_NONE);
 
     ch_parsed_save_data* save_data = ch_parsed_save_new();
     ch_byte_array ba_save;
     ch_load_file("G:/Games/portal/Portal Source/portal/SAVE/quick.sav", &ba_save, CH_SAVE_FILE_MAX_SIZE);
     ch_parse_info info = {
-        .datamap_collection = col,
+        .datamap_collection = &col,
         .bytes = ba_save.arr,
         .n_bytes = ba_save.len,
     };

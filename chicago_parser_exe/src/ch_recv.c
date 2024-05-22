@@ -472,6 +472,9 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
                                                  ch_hashmap_entry_compare,
                                                  NULL,
                                                  NULL);
+    if (!hm_unique_strs)
+        return CH_PROCESS_OUT_OF_MEMORY;
+
     size_t total_typedescs_to_write = 0;
     size_t string_alloc_size = 0;
 
@@ -501,9 +504,9 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
             goto end;
     }
 
-    collection_out->len = sizeof(ch_datamap_collection) + n_sorted_maps * sizeof(ch_datamap) +
-                          total_typedescs_to_write * sizeof(ch_type_description) + string_alloc_size +
-                          sizeof(ch_linked_name) * ctx->linked_names.size + sizeof(ch_datamap_collection_tag);
+    collection_out->len = sizeof(ch_datamap_collection_header) + sizeof(ch_datamap_collection) +
+                          n_sorted_maps * sizeof(ch_datamap) + total_typedescs_to_write * sizeof(ch_type_description) +
+                          string_alloc_size + sizeof(ch_linked_name) * ctx->linked_names.size;
 
     collection_out->arr = calloc(1, collection_out->len);
     if (!collection_out->arr) {
@@ -511,12 +514,12 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
         goto end;
     }
 
-    ch_datamap_collection* ch_col = (ch_datamap_collection*)collection_out->arr;
+    ch_datamap_collection_header* ch_head = (ch_datamap_collection_header*)collection_out->arr;
+    ch_datamap_collection* ch_col = (ch_datamap_collection*)(ch_head + 1);
     ch_datamap* ch_dms = (ch_datamap*)(ch_col + 1);
     ch_type_description* ch_tds = (ch_type_description*)(ch_dms + n_sorted_maps);
     char* string_buf = (char*)(ch_tds + total_typedescs_to_write);
     ch_linked_name* ch_linked_names = (ch_linked_name*)(string_buf + string_alloc_size);
-    ch_datamap_collection_tag* ch_tag = (ch_datamap_collection_tag*)(ch_linked_names + ctx->linked_names.size);
 
     // fill collection
     ch_col->lookup = NULL;
@@ -563,7 +566,10 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
             ch_td->total_size_bytes = (size_t)td_kv[CH_TD_TOTAL_SIZE].val.via.u64;
             ch_td->flags = (unsigned short)td_kv[CH_TD_FLAGS].val.via.u64;
             ch_td->n_elems = (unsigned short)td_kv[CH_TD_NUM_ELEMS].val.via.u64;
-            ch_td->save_restore_ops_rel_off = (size_t)td_kv[CH_TD_RESTORE_OPS].val.via.u64;
+            if (td_kv[CH_TD_RESTORE_OPS].val.type == MSGPACK_OBJECT_NIL)
+                ch_td->save_restore_ops_rel_off = CH_REL_OFF_NULL;
+            else
+                ch_td->save_restore_ops_rel_off = (size_t)td_kv[CH_TD_RESTORE_OPS].val.via.u64;
             ch_td->embedded_map_rel_off = ch_get_entry_offset(ctx->dm_hashmap, td_kv[CH_TD_EMBEDDED].val);
             if (ch_td->type == FIELD_CUSTOM)
                 ch_off += sizeof(void*);
@@ -590,15 +596,15 @@ static ch_process_result ch_create_naked_packed_collection(ch_process_msg_ctx* c
     assert((void*)ch_dm == (void*)ch_tds);
     assert((void*)ch_td == (void*)string_buf);
 
-    // fill tag
-    ch_tag->n_datamaps = n_sorted_maps;
-    ch_tag->n_linked_names = ctx->linked_names.size;
-    ch_tag->datamaps_start = (size_t)ch_dms - (size_t)collection_out->arr;
-    ch_tag->typedescs_start = (size_t)ch_tds - (size_t)collection_out->arr;
-    ch_tag->strings_start = (size_t)string_buf - (size_t)collection_out->arr;
-    ch_tag->linked_names_start = (size_t)ch_linked_names - (size_t)collection_out->arr;
-    ch_tag->version = CH_DATAMAP_STRUCT_VERSION;
-    strncpy(ch_tag->magic, CH_COLLECTION_FILE_MAGIC, sizeof ch_tag->magic);
+    // fill header
+    ch_head->n_datamaps = n_sorted_maps;
+    ch_head->n_linked_names = ctx->linked_names.size;
+    ch_head->dms_rel_off = (size_t)ch_dms - (size_t)collection_out->arr;
+    ch_head->tds_rel_off = (size_t)ch_tds - (size_t)collection_out->arr;
+    ch_head->strs_rel_off = (size_t)string_buf - (size_t)collection_out->arr;
+    ch_head->lnks_rel_off = (size_t)ch_linked_names - (size_t)collection_out->arr;
+    ch_head->version = CH_DATAMAP_STRUCT_VERSION;
+    strncpy(ch_head->magic, CH_COLLECTION_FILE_MAGIC, sizeof ch_head->magic);
 
 end:
     hashmap_free(hm_unique_strs);

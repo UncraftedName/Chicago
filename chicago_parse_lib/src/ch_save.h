@@ -26,6 +26,9 @@
     GEN(CH_ERR_BAD_SYMBOL_TABLE)       \
     GEN(CH_ERR_DATAMAP_NOT_FOUND)      \
                                        \
+    /* custom field registration */    \
+    GEN(CH_ERR_CUSTOM_FIELD_CONFLICT)  \
+                                       \
     /* .sav header errors */           \
     GEN(CH_ERR_SAV_BAD_TAG)            \
                                        \

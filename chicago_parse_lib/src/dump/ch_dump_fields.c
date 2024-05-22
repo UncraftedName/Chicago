@@ -127,7 +127,8 @@ static const void* ch_memnz(const void* mem, size_t n_max)
 ch_err ch_dump_field_val_text(ch_dump_text* dump,
                               ch_field_type ft,
                               size_t total_size_bytes,
-                              const unsigned char* field_ptr)
+                              const unsigned char* field_ptr,
+                              bool always_show_as_array)
 {
     ch_field_type ft_reduced = ch_reduce_field_type_for_printing(ft);
     size_t reduced_byte_size = ch_field_type_byte_size(ft_reduced);
@@ -154,7 +155,7 @@ ch_err ch_dump_field_val_text(ch_dump_text* dump,
         // add some logic to manually display this in bytes for certain fields
     }
 
-    bool display_as_array = n_reduced_elems > 1 && ft_reduced != FIELD_CHARACTER;
+    bool display_as_array = always_show_as_array || (n_reduced_elems > 1 && ft_reduced != FIELD_CHARACTER);
     if (display_as_array)
         CH_RET_IF_ERR(ch_dump_text_printf(dump, "["));
     if (ft_reduced == FIELD_CHARACTER)
@@ -250,7 +251,17 @@ static ch_err ch_dump_restored_fields_text(ch_dump_text* dump, const ch_datamap*
                 any = true;
 
                 if (td->type == FIELD_CUSTOM) {
-                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "CUSTOM %s: (NOT IMPLEMENTED)\n", td->name));
+                    const void** custom_ptr = (const void**)field_ptr;
+                    if (td->save_restore_ops) {
+                        if (*custom_ptr) {
+                            CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(*td->save_restore_ops->dump_fns, dump, td, *custom_ptr));
+                        } else {
+                            CH_RET_IF_ERR(ch_dump_text_printf(dump, "CUSTOM %s: <null>\n", td->name));
+                        }
+                    } else {
+                        // print NOT IMPLEMENTED even if the custom field is null - this may be because the field wasn't parsed
+                        CH_RET_IF_ERR(ch_dump_text_printf(dump, "CUSTOM %s: (NOT IMPLEMENTED)\n", td->name));
+                    }
                     continue;
                 }
                 if (td->type == FIELD_EMBEDDED) {
@@ -258,7 +269,7 @@ static ch_err ch_dump_restored_fields_text(ch_dump_text* dump, const ch_datamap*
                     CH_RET_IF_ERR(ch_dump_restored_fields_text(dump, td->embedded_map, field_ptr));
                 } else {
                     CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s %s: ", ch_create_field_type_str(td), td->name));
-                    CH_RET_IF_ERR(ch_dump_field_val_text(dump, td->type, td->total_size_bytes, field_ptr));
+                    CH_RET_IF_ERR(ch_dump_field_val_text(dump, td->type, td->total_size_bytes, field_ptr, false));
                 }
             }
             if (!any)

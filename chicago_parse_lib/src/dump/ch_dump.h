@@ -44,17 +44,20 @@ typedef struct ch_dump_msgpack {
 #define _CH_LIST_DUMP_STRUCT_ELEM(dump_type, dump_struct, component_name, ...) \
     _ch_dump_##component_name##_##dump_type##_fn dump_type;
 
-#define CH_DECLARE_DUMP_FNS(component_name, global_fns_name, ...)           \
+#define CH_DECLARE_DUMP_FNS(component_name, ...)                            \
     _CH_FOREACH_DUMP_TYPE(_CH_TYPEDEF_DUMP_FN, component_name, __VA_ARGS__) \
     typedef struct ch_dump_##component_name##_fns {                         \
         _CH_FOREACH_DUMP_TYPE(_CH_LIST_DUMP_STRUCT_ELEM, component_name)    \
-    } ch_dump_##component_name##_fns;                                       \
+    } ch_dump_##component_name##_fns;
+
+#define CH_DECLARE_DUMP_FNS_SINGLE(component_name, global_fns_name, ...) \
+    CH_DECLARE_DUMP_FNS(component_name, __VA_ARGS__)                     \
     extern const ch_dump_##component_name##_fns global_fns_name;
 
-CH_DECLARE_DUMP_FNS(default, g_dump_default_fns, const char* dump_fns_name);
+CH_DECLARE_DUMP_FNS_SINGLE(default, g_dump_default_fns, const char* dump_fns_name);
 
 #define _CH_DUMP_CALL(dump_fns, dump, dump_type, ...) \
-    (dump_fns.dump_type ? dump_fns.dump_type(dump, __VA_ARGS__) : g_dump_default_fns.dump_type(dump, #dump_fns))
+    ((dump_fns).dump_type ? (dump_fns).dump_type(dump, __VA_ARGS__) : g_dump_default_fns.dump_type(dump, #dump_fns))
 
 // probably a good idea to define this if adding a new dump type
 #define CH_DUMP_TEXT_CALL(dump_fns, dump, ...) _CH_DUMP_CALL(dump_fns, dump, text, __VA_ARGS__)

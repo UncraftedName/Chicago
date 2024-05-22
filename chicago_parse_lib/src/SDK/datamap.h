@@ -90,10 +90,10 @@ const char* ch_field_string(ch_field_type ft);
 // Never show this field to anyone, even the local player (unusual)
 #define FTYPEDESC_VIEW_NEVER 0x8000
 
+struct ch_parsed_save_ctx;
 struct ch_datamap;
 struct ch_type_description;
 struct ch_byte_reader;
-struct ch_byte_writer;
 enum ch_err;
 
 enum {
@@ -145,19 +145,13 @@ typedef struct datamap_t {
     int packed_size;
 } datamap_t;
 
-// TOOD this is a circular ref to the enum - the header files could be better organized!
-typedef enum ch_err (*ch_save_restore_op_calc_restored_size)(const struct ch_type_description* td,
-                                                             struct ch_byte_reader* br);
+typedef enum ch_err (*ch_restore_custom)(struct ch_parsed_save_ctx* ctx, void** field, void* user_data);
 
-typedef enum ch_err (*ch_save_restore_op_restore)(const struct ch_type_description* td,
-                                                  struct ch_byte_reader* br,
-                                                  struct ch_byte_writer* bw);
-
-typedef struct ch_save_restore_ops {
-    // ch_save_restore_op_calc_restored_size calc_restored_size;
-    // ch_save_restore_op_restore restore;
-    int x;
-} ch_save_restore_ops;
+typedef struct ch_custom_ops {
+    ch_restore_custom restore_fn;
+    void* user_data;
+    const struct ch_dump_custom_fns* dump_fns;
+} ch_custom_ops;
 
 // when written to file, structures will be saved relative to some point in the file;
 // when loaded they'll be fixed up to just be the raw pointers
@@ -166,7 +160,6 @@ typedef struct ch_save_restore_ops {
         ptr_type name;                \
         size_t name##_rel_off;        \
     }
-
 
 /*
 * The two main options I see are to treat 0 as "NULL" and add 1 to every offset or to
@@ -178,7 +171,7 @@ typedef struct ch_save_restore_ops {
 #define CH_REL_OFF_NULL SIZE_MAX
 
 // update whenever changes are made to ch_type_description or ch_datamap
-#define CH_DATAMAP_STRUCT_VERSION 4
+#define CH_DATAMAP_STRUCT_VERSION 5
 #define CH_COLLECTION_FILE_MAGIC "chicago"
 
 /*
@@ -190,18 +183,17 @@ typedef struct ch_save_restore_ops {
 * care about the overhead of copying the entire file into mem before checking if the
 * tag is valid.
 */
-typedef struct ch_datamap_collection_tag {
+typedef struct ch_datamap_collection_header {
+    char magic[8]; // CH_COLLECTION_FILE_MAGIC
+    size_t version; // CH_DATAMAP_STRUCT_VERSION
     size_t n_datamaps;
     size_t n_linked_names;
-    // absolute offsets from file start
-    size_t datamaps_start;
-    size_t typedescs_start;
-    size_t strings_start;
-    size_t linked_names_start;
-    // keep these guys at the end across all versions
-    size_t version; // CH_DATAMAP_STRUCT_VERSION
-    char magic[8];  // CH_COLLECTION_FILE_MAGIC
-} ch_datamap_collection_tag;
+    // offsets from file start
+    CH_PACKED_PTR(const struct ch_datamap*, dms);
+    CH_PACKED_PTR(const struct ch_type_description*, tds);
+    CH_PACKED_PTR(const char*, strs);
+    CH_PACKED_PTR(const struct ch_linked_name*, lnks);
+} ch_datamap_collection_header;
 
 typedef struct ch_linked_name {
     CH_PACKED_PTR(const char*, linked_name);
@@ -214,7 +206,6 @@ typedef struct ch_datamap {
     CH_PACKED_PTR(const struct ch_datamap*, base_map);
     CH_PACKED_PTR(const struct ch_type_description*, fields);
     size_t n_fields;
-    // necessary to keep this to uniquely determine restore ops (in case of collisions across modules)
     CH_PACKED_PTR(const char*, module_name);
     size_t ch_size;
 } ch_datamap;
@@ -229,6 +220,6 @@ typedef struct ch_type_description {
     size_t game_offset;
     size_t ch_offset;
     size_t total_size_bytes;
-    CH_PACKED_PTR(const struct ch_save_restore_ops*, save_restore_ops);
+    CH_PACKED_PTR(const struct ch_custom_ops*, save_restore_ops);
     CH_PACKED_PTR(const struct ch_datamap*, embedded_map);
 } ch_type_description;

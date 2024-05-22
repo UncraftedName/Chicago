@@ -177,8 +177,14 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
         // read the field!
 
         if (field->type == FIELD_CUSTOM) {
-            CH_PARSER_LOG_ERR(ctx, "CUSTOM fields are not implemented yet (%s.%s)", dm->class_name, field->name);
-            ctx->br.cur = ctx->br.end; // skip
+            if (field->save_restore_ops) {
+                CH_RET_IF_ERR(field->save_restore_ops->restore_fn(ctx,
+                                                                  CH_FIELD_AT_PTR(class_ptr, field, void*),
+                                                                  field->save_restore_ops->user_data));
+            } else {
+                CH_PARSER_LOG_ERR(ctx, "CUSTOM restore is not implemented for (%s.%s)", dm->class_name, field->name);
+                ctx->br.cur = ctx->br.end; // skip
+            }
         } else if (field->type == FIELD_EMBEDDED) {
             for (int j = 0; j < field->n_elems; j++)
                 CH_RET_IF_ERR(ch_br_restore_recursive(ctx,
@@ -188,7 +194,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
             ch_br_restore_simple_field(ctx, class_ptr + field->ch_offset, field);
         }
 
-        CH_RET_IF_ERR(ch_br_end_block(br, &block, true));
+        CH_RET_IF_ERR(ch_br_end_block(br, &block, false)); // TODO SWITCH BACK TO TRUE?
     }
 
     return CH_ERR_NONE;

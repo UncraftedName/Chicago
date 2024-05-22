@@ -83,94 +83,99 @@ const char* ch_brotli_decompress(ch_byte_array in, ch_byte_array* out)
     return out_err;
 }
 
-ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes)
-{
-    if (bytes.len < sizeof(ch_datamap_collection) + sizeof(ch_datamap_collection_tag))
-        return CH_ARCH_INVALID_COLLECTION;
-
-    ch_datamap_collection* col = (ch_datamap_collection*)bytes.arr;
-
-    ch_datamap_collection_tag* tag =
-        (ch_datamap_collection_tag*)(bytes.arr + bytes.len - sizeof(ch_datamap_collection_tag));
-
-    if (strncmp(tag->magic, CH_COLLECTION_FILE_MAGIC, sizeof tag->magic))
-        return CH_ARCH_INVALID_COLLECTION;
-    if (tag->version != CH_DATAMAP_STRUCT_VERSION || tag->n_datamaps == 0)
-        return CH_ARCH_INVALID_COLLECTION_VERSION;
+// the offsets for the various fields are relative to one of the pointers from the header and they should all lie inside the array
 
 #define CH_CHECK_PTR(p)                                                        \
     if ((char*)(p) <= (char*)bytes.arr || (char*)(p) >= bytes.arr + bytes.len) \
     return CH_ARCH_INVALID_COLLECTION
 
-    ch_datamap* dms = (ch_datamap*)(bytes.arr + tag->datamaps_start);
-    ch_type_description* tds = (ch_type_description*)(bytes.arr + tag->typedescs_start);
-    const char* strings = bytes.arr + tag->strings_start;
-    ch_linked_name* lns = (ch_linked_name*)(bytes.arr + tag->linked_names_start);
-
-    CH_CHECK_PTR(dms);
-    CH_CHECK_PTR(dms + tag->n_datamaps);
-    CH_CHECK_PTR(tds);
-    CH_CHECK_PTR(strings);
-    CH_CHECK_PTR(lns);
-    CH_CHECK_PTR(lns + tag->n_linked_names);
-
-    // the offsets for the various fields are relative to one of the above pointers and they should all lie inside the array
-#define CH_FIXUP(packed, rel_to)                   \
-    do {                                           \
-        if (packed##_rel_off == CH_REL_OFF_NULL) { \
-            packed = NULL;                         \
-        } else {                                   \
-            packed = rel_to + packed##_rel_off;    \
-            CH_CHECK_PTR(packed);                  \
-        }                                          \
+#define CH_FIXUP_TYPED(packed, rel_to, type)            \
+    do {                                                \
+        if (packed##_rel_off == CH_REL_OFF_NULL) {      \
+            packed = NULL;                              \
+        } else {                                        \
+            packed = (type)(rel_to + packed##_rel_off); \
+            CH_CHECK_PTR(packed);                       \
+        }                                               \
     } while (0)
 
+#define CH_FIXUP(packed, rel_to) CH_FIXUP_TYPED(packed, rel_to, void*)
+
+ch_archive_result ch_verify_and_fixup_collection_pointers(ch_byte_array bytes,
+                                                          ch_datamap_collection_header** header_out)
+{
+    if (bytes.len < sizeof(ch_datamap_collection_header))
+        return CH_ARCH_INVALID_COLLECTION;
+
+    ch_datamap_collection_header* hd = (ch_datamap_collection_header*)bytes.arr;
+    *header_out = hd;
+
+    if (strncmp(hd->magic, CH_COLLECTION_FILE_MAGIC, sizeof hd->magic))
+        return CH_ARCH_INVALID_COLLECTION;
+    if (hd->version != CH_DATAMAP_STRUCT_VERSION || hd->n_datamaps == 0)
+        return CH_ARCH_INVALID_COLLECTION_VERSION;
+
+    CH_FIXUP_TYPED(hd->dms, bytes.arr, ch_datamap*);
+    CH_FIXUP_TYPED(hd->tds, bytes.arr, ch_type_description*);
+    CH_FIXUP_TYPED(hd->lnks, bytes.arr, ch_linked_name*);
+    CH_FIXUP_TYPED(hd->strs, bytes.arr, const char*);
+    CH_CHECK_PTR((char*)(hd->dms + hd->n_datamaps) - 1);
+    CH_CHECK_PTR((char*)(hd->lnks + hd->n_linked_names) - 1);
+
     // fixup datamaps & type descs
-    for (size_t i = 0; i < tag->n_datamaps; i++) {
-        ch_datamap* dm = &dms[i];
-        CH_FIXUP(dm->base_map, dms);
-        CH_FIXUP(dm->class_name, strings);
-        CH_FIXUP(dm->module_name, strings);
-        CH_FIXUP(dm->fields, tds);
+    for (size_t i = 0; i < hd->n_datamaps; i++) {
+        ch_datamap* dm = (ch_datamap*)&hd->dms[i]; // cast away const
+        CH_FIXUP(dm->base_map, hd->dms);
+        CH_FIXUP(dm->class_name, hd->strs);
+        CH_FIXUP(dm->module_name, hd->strs);
+        CH_FIXUP(dm->fields, hd->tds);
         if (!!dm->fields ^ !!dm->n_fields)
             return CH_ARCH_INVALID_COLLECTION;
         for (size_t j = 0; j < dm->n_fields; j++) {
-            ch_type_description* td = (ch_type_description*)&dm->fields[j]; // cast away const
-            CH_FIXUP(td->name, strings);
-            CH_FIXUP(td->external_name, strings);
-            CH_FIXUP(td->embedded_map, dms);
+            ch_type_description* td = (ch_type_description*)&dm->fields[j];
+            CH_FIXUP(td->name, hd->strs);
+            CH_FIXUP(td->external_name, hd->strs);
+            CH_FIXUP(td->embedded_map, hd->dms);
             if (td->ch_offset >= dm->ch_size)
                 return CH_ARCH_INVALID_COLLECTION;
         }
     }
 
-    for (size_t i = 0; i < tag->n_linked_names; i++) {
-        ch_linked_name* ln = &lns[i];
-        CH_FIXUP(ln->linked_name, strings);
-        CH_FIXUP(ln->dm, dms);
+    for (size_t i = 0; i < hd->n_linked_names; i++) {
+        ch_linked_name* ln = (ch_linked_name*)&hd->lnks[i];
+        CH_FIXUP(ln->linked_name, hd->strs);
+        CH_FIXUP(ln->dm, hd->dms);
     }
 
-#undef CH_FIXUP
-#undef CH_CHECK_PTR
+    return CH_ARCH_OK;
+}
 
-    // TODO move to a different function & handle OOM
-
-    col->lookup = hashmap_new(sizeof(ch_datamap_lookup_entry),
-                              tag->n_datamaps + tag->n_linked_names,
+ch_archive_result ch_create_collection_lookup(const ch_datamap_collection_header* header, ch_datamap_collection* out)
+{
+    out->lookup = hashmap_new(sizeof(ch_datamap_lookup_entry),
+                              header->n_datamaps + header->n_linked_names,
                               0,
                               0,
                               ch_datamap_collection_name_hash,
                               ch_datamap_collection_name_compare,
                               NULL,
                               NULL);
+    if (!out->lookup)
+        return CH_ARCH_OOM;
 
-    for (size_t i = 0; i < tag->n_datamaps; i++) {
-        ch_datamap_lookup_entry entry = {.name = dms[i].class_name, .datamap = &dms[i]};
-        hashmap_set(col->lookup, &entry);
+    for (size_t i = 0; i < header->n_datamaps; i++) {
+        ch_datamap_lookup_entry entry = {.name = header->dms[i].class_name, .datamap = &header->dms[i]};
+        const void* v = hashmap_set(out->lookup, &entry);
+        assert(!v);
+        if (hashmap_oom(out->lookup))
+            return CH_ARCH_OOM;
     }
-    for (size_t i = 0; i < tag->n_linked_names; i++) {
-        ch_datamap_lookup_entry entry = {.name = lns[i].linked_name, .datamap = lns[i].dm};
-        hashmap_set(col->lookup, &entry);
+    for (size_t i = 0; i < header->n_linked_names; i++) {
+        ch_datamap_lookup_entry entry = {.name = header->lnks[i].linked_name, .datamap = header->lnks[i].dm};
+        const void* v = hashmap_set(out->lookup, &entry);
+        assert(!v);
+        if (hashmap_oom(out->lookup))
+            return CH_ARCH_OOM;
     }
 
     return CH_ARCH_OK;

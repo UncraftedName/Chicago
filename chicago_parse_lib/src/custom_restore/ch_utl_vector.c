@@ -1,5 +1,6 @@
 #include "ch_utl_vector.h"
 #include "ch_field_reader.h"
+#include "dump/ch_dump_fns.h"
 
 ch_err ch_cr_utl_vector_restore_to(ch_parsed_save_ctx* ctx,
                                    ch_field_type field_type,
@@ -53,9 +54,7 @@ ch_err ch_cr_utl_vector_restore(ch_parsed_save_ctx* ctx,
                                 const ch_datamap* embedded_map,
                                 ch_cr_utl_vector_restored** data)
 {
-    *data = ch_arena_alloc(ctx->arena, sizeof **data);
-    if (!*data)
-        return CH_ERR_OUT_OF_MEMORY;
+    CH_CHECKED_ALLOC(*data, ch_arena_alloc(ctx->arena, sizeof **data));
     return ch_cr_utl_vector_restore_to(ctx, field_type, embedded_map, *data);
 }
 
