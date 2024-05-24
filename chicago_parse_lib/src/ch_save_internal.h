@@ -39,6 +39,12 @@ typedef struct ch_parsed_save_ctx {
     // some stuff is stored relative to a 'base' in the file and needs to be saved across function calls
     ch_byte_reader br_cur_base;
     ch_sf_save_data* sf_save_data;
+
+    // cached datamaps for CEventsSaveDataOps restore
+    struct {
+        const ch_datamap* dm_base_ent_output;
+        const ch_datamap* dm_event_action;
+    } ent_outputs_cache;
 } ch_parsed_save_ctx;
 
 ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...);

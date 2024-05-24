@@ -52,7 +52,7 @@ static ch_err ch_restore_block_headers(ch_parsed_save_ctx* ctx, ch_block_body_in
     if (br->overflowed)
         return CH_ERR_READER_OVERFLOWED;
 
-    ch_cr_utl_vector_restored block_headers;
+    ch_cr_utl_vector block_headers;
     CH_RET_IF_ERR(ch_cr_utl_vector_restore_by_name_to(ctx, "SaveRestoreBlockHeader_t", &block_headers));
 
     const ch_type_description *td_name, *td_loc_header, *td_loc_body;

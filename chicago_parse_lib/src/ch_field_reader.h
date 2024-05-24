@@ -14,7 +14,13 @@ ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const ch
 ch_err ch_br_start_block(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_block* block);
 ch_err ch_br_end_block(ch_byte_reader* br, ch_block* block, bool check_match);
 
-// CRestore::ReadFeilds
+ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx,
+                                  void* dest,
+                                  ch_field_type ft,
+                                  size_t n_elems,
+                                  size_t total_size_bytes);
+
+// CRestore::ReadFields
 ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
                             const char* symbol_name,
                             const ch_datamap* map,

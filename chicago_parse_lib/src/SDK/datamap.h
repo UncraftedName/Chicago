@@ -48,7 +48,7 @@ typedef enum ch_field_type {
 struct ch_type_description;
 
 size_t ch_field_type_byte_size(ch_field_type ft);
-const char* ch_field_string(ch_field_type ft);
+const char* ch_field_type_string(ch_field_type ft);
 
 // This field is masked for global entity save/restore
 #define FTYPEDESC_GLOBAL 0x0001
@@ -145,7 +145,10 @@ typedef struct datamap_t {
     int packed_size;
 } datamap_t;
 
-typedef enum ch_err (*ch_restore_custom)(struct ch_parsed_save_ctx* ctx, void** field, void* user_data);
+typedef enum ch_err (*ch_restore_custom)(struct ch_parsed_save_ctx* ctx,
+                                         void** field,
+                                         const struct ch_type_description* td,
+                                         void* user_data);
 
 typedef struct ch_custom_ops {
     ch_restore_custom restore_fn;
@@ -184,7 +187,7 @@ typedef struct ch_custom_ops {
 * tag is valid.
 */
 typedef struct ch_datamap_collection_header {
-    char magic[8]; // CH_COLLECTION_FILE_MAGIC
+    char magic[8];  // CH_COLLECTION_FILE_MAGIC
     size_t version; // CH_DATAMAP_STRUCT_VERSION
     size_t n_datamaps;
     size_t n_linked_names;

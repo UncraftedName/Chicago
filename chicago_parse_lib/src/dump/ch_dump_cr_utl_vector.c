@@ -1,10 +1,10 @@
 #include <inttypes.h>
 
-#include "ch_dump_fns.h"
+#include "ch_dump_decl.h"
 #include "custom_restore/ch_utl_vector.h"
 
-// TODO idk come up with some way of handling null vectors
-static ch_err ch_dump_utl_vec_text(ch_dump_text* dump, const char* vec_name, const ch_cr_utl_vector_restored* utl_vec)
+// TODO idk come up with some way of handling null vectors - i'll need to pass in some user data for the embedded/field name
+static ch_err ch_dump_utl_vec_text(ch_dump_text* dump, const char* var_name, const ch_cr_utl_vector* utl_vec)
 {
 
     if (utl_vec->embedded_map) {
@@ -12,7 +12,7 @@ static ch_err ch_dump_utl_vec_text(ch_dump_text* dump, const char* vec_name, con
                                           "CUtlVector<%s,%zu> %s:%s",
                                           utl_vec->embedded_map->class_name,
                                           utl_vec->n_elems,
-                                          vec_name,
+                                          var_name,
                                           utl_vec->n_elems == 0 ? " []\n" : "\n"));
         dump->indent_lvl++;
         for (size_t i = 0; i < utl_vec->n_elems; i++) {
@@ -26,9 +26,9 @@ static ch_err ch_dump_utl_vec_text(ch_dump_text* dump, const char* vec_name, con
     } else {
         CH_RET_IF_ERR(ch_dump_text_printf(dump,
                                           "CUtlVector<%s,%zu> %s: ",
-                                          ch_field_string(utl_vec->field_type),
+                                          ch_field_type_string(utl_vec->field_type),
                                           utl_vec->n_elems,
-                                          vec_name));
+                                          var_name));
         CH_RET_IF_ERR(ch_dump_field_val_text(dump,
                                              utl_vec->field_type,
                                              utl_vec->elem_size * utl_vec->n_elems,
@@ -38,6 +38,6 @@ static ch_err ch_dump_utl_vec_text(ch_dump_text* dump, const char* vec_name, con
     return CH_ERR_NONE;
 }
 
-const ch_dump_utl_vec_fns g_dump_cr_utl_vec_fns = {
+const ch_dump_cr_utl_vec_fns g_dump_cr_utl_vec_fns = {
     .text = ch_dump_utl_vec_text,
 };

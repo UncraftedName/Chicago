@@ -5,6 +5,7 @@
 #include "thirdparty/msgpack/include/ch_msgpack.h"
 #include "ch_save_internal.h"
 
+// TODO add a ll for errors here too
 typedef struct ch_dump_text {
     FILE* f;
     uint8_t indent_lvl;

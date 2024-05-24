@@ -1,6 +1,6 @@
 #include <inttypes.h>
 
-#include "ch_dump_fns.h"
+#include "ch_dump_decl.h"
 
 // TODO expose everything
 
@@ -12,7 +12,7 @@
 #define CH_ENT_ENTRY_MASK (CH_NUM_ENT_ENTRIES - 1)
 #define CH_NUM_SERIAL_NUM_BITS (32 - CH_NUM_ENT_ENTRY_BITS)
 
-const char* ch_field_string(ch_field_type ft)
+const char* ch_field_type_string(ch_field_type ft)
 {
 #define CH_FT_CASE(type, str) \
     case type:                \
@@ -49,9 +49,10 @@ const char* ch_field_string(ch_field_type ft)
             return "CUSTOM";
         case FIELD_EMBEDDED:
             return "EMBEDDED";
+        case FIELD_VOID:
+            return "VOID";
         case FIELD_TYPECOUNT:
         case FIELD_INPUT:
-        case FIELD_VOID:
         default:
             return "UNKNOWN";
     }
@@ -62,7 +63,7 @@ const char* ch_field_string(ch_field_type ft)
 // make sure to save the string before calling again
 static const char* ch_create_field_type_str(const ch_type_description* td)
 {
-    const char* base_type_str = ch_field_string(td->type);
+    const char* base_type_str = ch_field_type_string(td->type);
     if (td->n_elems == 1)
         return base_type_str;
     static char buf[32];
@@ -127,7 +128,7 @@ static const void* ch_memnz(const void* mem, size_t n_max)
 ch_err ch_dump_field_val_text(ch_dump_text* dump,
                               ch_field_type ft,
                               size_t total_size_bytes,
-                              const unsigned char* field_ptr,
+                              const void* field_ptr,
                               bool always_show_as_array)
 {
     ch_field_type ft_reduced = ch_reduce_field_type_for_printing(ft);

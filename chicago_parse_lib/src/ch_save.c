@@ -5,7 +5,7 @@
 
 #include "ch_field_reader.h"
 #include "ch_save_internal.h"
-#include "dump/ch_dump_fns.h"
+#include "dump/ch_dump_decl.h"
 
 ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...)
 {

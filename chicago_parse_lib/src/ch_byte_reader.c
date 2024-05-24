@@ -63,9 +63,12 @@ ch_err ch_br_end_block(ch_byte_reader* br, ch_block* block, bool check_match)
     return CH_ERR_NONE;
 }
 
-static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char* dest, const ch_type_description* td)
+ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx,
+                                  void* dest,
+                                  ch_field_type ft,
+                                  size_t n_elems,
+                                  size_t total_size_bytes)
 {
-    ch_field_type ft = td->type;
     ch_byte_reader* br = &ctx->br;
 
     switch (ft) {
@@ -75,7 +78,7 @@ static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char*
         case FIELD_FUNCTION:
         case FIELD_MODELINDEX:
         case FIELD_MATERIALINDEX: {
-            for (size_t i = 0; ch_br_remaining(br) > 0 && i < td->n_elems; i++) {
+            for (size_t i = 0; ch_br_remaining(br) > 0 && i < n_elems; i++) {
                 size_t len = ch_br_strlen(br);
                 if (len > 0) {
                     char** alloc_dest = (char**)dest + i;
@@ -107,9 +110,9 @@ static ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx, unsigned char*
         case FIELD_INTERVAL:
         case FIELD_VECTOR2D: {
             size_t bytes_avail = ch_br_remaining(br);
-            if (!td->total_size_bytes || bytes_avail < td->total_size_bytes)
+            if (!total_size_bytes || bytes_avail < total_size_bytes)
                 return CH_ERR_BAD_FIELD_READ;
-            ch_br_read(br, dest, min(td->total_size_bytes, bytes_avail));
+            ch_br_read(br, dest, min(total_size_bytes, bytes_avail));
             break;
         }
         case FIELD_INPUT:
@@ -180,6 +183,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
             if (field->save_restore_ops) {
                 CH_RET_IF_ERR(field->save_restore_ops->restore_fn(ctx,
                                                                   CH_FIELD_AT_PTR(class_ptr, field, void*),
+                                                                  field,
                                                                   field->save_restore_ops->user_data));
             } else {
                 CH_PARSER_LOG_ERR(ctx, "CUSTOM restore is not implemented for (%s.%s)", dm->class_name, field->name);
@@ -191,9 +195,14 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
                                                       field->embedded_map,
                                                       class_ptr + field->ch_offset + field->total_size_bytes * j));
         } else {
-            ch_br_restore_simple_field(ctx, class_ptr + field->ch_offset, field);
+            CH_RET_IF_ERR(ch_br_restore_simple_field(ctx,
+                                                     class_ptr + field->ch_offset,
+                                                     field->type,
+                                                     field->n_elems,
+                                                     field->total_size_bytes));
         }
 
+        // TODO avoid error for CH_ERR_CUSTOM_FIELD_PARSE
         CH_RET_IF_ERR(ch_br_end_block(br, &block, false)); // TODO SWITCH BACK TO TRUE?
     }
 
@@ -216,20 +225,20 @@ size_t ch_field_type_byte_size(ch_field_type ft)
             return sizeof(int8_t);
         case FIELD_SHORT:
             return sizeof(int16_t);
-        case FIELD_STRING:
         case FIELD_INTEGER:
         case FIELD_COLOR32:
         case FIELD_CLASSPTR:
         case FIELD_EHANDLE:
         case FIELD_EDICT:
         case FIELD_TICK:
+        case FIELD_INPUT:
+            return sizeof(int32_t);
+        case FIELD_STRING:
         case FIELD_MODELNAME:
         case FIELD_SOUNDNAME:
-        case FIELD_INPUT:
+        case FIELD_FUNCTION:
         case FIELD_MODELINDEX:
         case FIELD_MATERIALINDEX:
-            return sizeof(int32_t);
-        case FIELD_FUNCTION:
             return sizeof(void*);
         case FIELD_VECTOR2D:
         case FIELD_INTERVAL:

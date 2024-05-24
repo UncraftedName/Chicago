@@ -90,7 +90,9 @@ static ch_err ch_register_cb(ch_register_info* info)
 ch_err ch_register_all(ch_datamap_collection_header* header, ch_datamap_collection* collection)
 {
     const ch_custom_register register_fns[] = {
-        ch_utl_vec_register,
+        ch_reg_utl_vec,
+        ch_reg_ent_output,
+        ch_reg_variant,
     };
 
     struct hashmap* hm = hashmap_new(sizeof(ch_hm_ops_entry),
@@ -104,7 +106,7 @@ ch_err ch_register_all(ch_datamap_collection_header* header, ch_datamap_collecti
 
     if (!hm)
         return CH_ERR_OUT_OF_MEMORY;
-    for (size_t i = 0 ; i < header->n_datamaps; i++) {
+    for (size_t i = 0; i < header->n_datamaps; i++) {
         ch_datamap* dm = (ch_datamap*)&header->dms[i];
         for (size_t j = 0; j < dm->n_fields; j++) {
             ch_type_description* td = (ch_type_description*)&dm->fields[j];

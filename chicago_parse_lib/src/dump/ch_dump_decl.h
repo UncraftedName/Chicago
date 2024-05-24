@@ -15,7 +15,7 @@ CH_DECLARE_DUMP_FNS_SINGLE(restored_class, g_dump_restored_class_fns, const ch_d
 ch_err ch_dump_field_val_text(ch_dump_text* dump,
                               ch_field_type ft,
                               size_t total_size_bytes,
-                              const unsigned char* field_ptr,
+                              const void* field_ptr,
                               bool always_show_as_array);
 
 // state files
@@ -28,7 +28,17 @@ CH_DECLARE_DUMP_FNS_SINGLE(hl3, g_dump_hl3_fns, const ch_sf_entity_patch* sf);
 
 CH_DECLARE_DUMP_FNS(custom, const ch_type_description* td, const void* restored_field);
 
-CH_DECLARE_DUMP_FNS_SINGLE(utl_vec,
+struct ch_cr_utl_vector;
+CH_DECLARE_DUMP_FNS_SINGLE(cr_utl_vec,
                            g_dump_cr_utl_vec_fns,
-                           const char* vec_name,
-                           const struct ch_cr_utl_vector_restored* utl_vec);
+                           const char* var_name,
+                           const struct ch_cr_utl_vector* utl_vec);
+
+struct ch_cr_ent_output;
+CH_DECLARE_DUMP_FNS_SINGLE(cr_ent_output,
+                           g_dump_cr_ent_output,
+                           const char* var_name,
+                           const struct ch_cr_ent_output* ent_output);
+
+struct ch_cr_variant;
+CH_DECLARE_DUMP_FNS_SINGLE(cr_variant, g_dump_cr_variant, const char* var_name, const struct ch_cr_variant* variant);

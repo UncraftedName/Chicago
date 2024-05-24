@@ -41,6 +41,7 @@
     GEN(CH_ERR_BAD_BLOCK_START)        \
     GEN(CH_ERR_BAD_BLOCK_END)          \
     GEN(CH_ERR_BAD_FIELD_READ)         \
+    GEN(CH_ERR_CUSTOM_FIELD_PARSE)     \
                                        \
     /* state file errors */            \
     GEN(CH_ERR_BAD_STATE_FILE_LENGTH)  \
@@ -126,7 +127,7 @@ typedef struct ch_npc_schedule_conditions {
 typedef struct ch_npc_navigator {
     int16_t version;
     char _pad[2];
-    struct ch_cr_utl_vector_restored* path_vec;
+    struct ch_cr_utl_vector* path_vec;
 } ch_npc_navigator;
 
 typedef struct ch_custom_ent_restore_base_npc {

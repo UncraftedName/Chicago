@@ -1,6 +1,6 @@
 #include <inttypes.h>
 
-#include "ch_dump_fns.h"
+#include "ch_dump_decl.h"
 
 static ch_err ch_dump_hl1_text(ch_dump_text* dump, const ch_sf_save_data* sf)
 {
