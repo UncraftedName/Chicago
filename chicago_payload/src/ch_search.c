@@ -199,14 +199,20 @@ void ch_find_static_inits(ch_send_ctx* ctx, ch_search_ctx* sc)
     } patterns_infos[] = {
         {
             .str = "BE ?? ?? ?? ?? 8B C6 BF ?? ?? ?? ?? 3B C7 59 73 0F 8B 06 85 C0 74 02 FF D0 83 C6 04 3B F7 72 F1",
-            .name = "vs2005",
+            .name = "vs2005 (portal 1 5135)",
             .offset_to_static_inits_start_in_pattern = 1,
             .offset_to_static_inits_end_in_pattern = 8,
         },
         {
+            .str = "B8 ?? ?? ?? ?? BE ?? ?? ?? ?? 59 8B F8 3B C6 73 0F 8B 07 85 C0 74 02 FF D0 83 C7 04 3B FE 72 F1",
+            .name = "vs2010 (portal 2 8928)",
+            .offset_to_static_inits_start_in_pattern = 1,
+            .offset_to_static_inits_end_in_pattern = 6,
+        },
+        {
             .str = "E8 ?? ?? ?? ?? 68 ?? ?? ?? ?? 68 ?? ?? ?? ?? E8 ?? ?? ?? ?? 59 59 85 C0 75 ?? 68 ?? ?? ?? ?? E8 ?? "
                    "?? ?? ?? C7 04 24 ?? ?? ?? ?? 68 ?? ?? ?? ?? E8 ?? ?? ?? ??",
-            .name = "vs2008/2010/2012",
+            .name = "vs2010 (portal 1 steampipe)",
             .offset_to_static_inits_start_in_pattern = 44,
             .offset_to_static_inits_end_in_pattern = 39,
         },
