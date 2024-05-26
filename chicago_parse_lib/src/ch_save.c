@@ -227,15 +227,17 @@ ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
         return CC_ERR_BAD_STATE_FILE_NAME;
 
     if (!strncmp(sf->name + i, ".hl1", 4)) {
-        sf->sf_type = CH_SF_SAVE_DATA;
-        ctx->sf_save_data = &sf->sf_save_data;
-        return ch_parse_hl1(ctx, &sf->sf_save_data);
+        sf->type = CH_SF_SAVE_DATA;
+        CH_CHECKED_ALLOC(sf->data, ch_arena_calloc(ctx->arena, sizeof(ch_sf_save_data)));
+        return ch_parse_hl1(ctx, sf->data);
     } else if (!strncmp(sf->name + i, ".hl2", 4)) {
-        sf->sf_type = CH_SF_ADJACENT_CLIENT_STATE;
-        return ch_parse_hl2(ctx, &sf->sf_adjacent_client_state);
+        sf->type = CH_SF_ADJACENT_CLIENT_STATE;
+        CH_CHECKED_ALLOC(sf->data, ch_arena_calloc(ctx->arena, sizeof(ch_sf_adjacent_client_state)));
+        return ch_parse_hl2(ctx, sf->data);
     } else if (!strncmp(sf->name + i, ".hl3", 4)) {
-        sf->sf_type = CH_SF_ENTITY_PATCH;
-        return ch_parse_hl3(ctx, &sf->sf_entity_patch);
+        sf->type = CH_SF_ENTITY_PATCH;
+        CH_CHECKED_ALLOC(sf->data, ch_arena_calloc(ctx->arena, sizeof(ch_sf_entity_patch)));
+        return ch_parse_hl3(ctx, sf->data);
     } else {
         return CC_ERR_BAD_STATE_FILE_NAME;
     }

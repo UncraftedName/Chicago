@@ -73,6 +73,18 @@ static const char* const ch_err_strs[] = {CH_FOREACH_ERR(CH_GENERATE_STRING)};
 typedef enum ch_state_file_type { CH_FOREACH_SF_TYPE(CH_GENERATE_ENUM) } ch_state_file_type;
 static const char* const ch_sf_type_strs[] = {CH_FOREACH_SF_TYPE(CH_GENERATE_STRING)};
 
+typedef enum ch_block_type {
+    CH_BLOCK_ENTITIES,
+    CH_BLOCK_PHYSICS,
+    CH_BLOCK_AI,
+    CH_BLOCK_TEMPLATES,
+    CH_BLOCK_RESPONSE_SYSTEM,
+    CH_BLOCK_COMMENTARY,
+    CH_BLOCK_EVENT_QUEUE,
+    CH_BLOCK_ACHIEVEMENTS,
+    CH_BLOCK_COUNT,
+} ch_block_type;
+
 typedef enum ch_dump_flags {
     /*
     * If set, will not dump fields which are all zero to text/msgpack (for a lot of fields this
@@ -154,15 +166,49 @@ typedef struct ch_block_entities {
     ch_restored_entity** entities; // has entity_table.n_elems entities
 } ch_block_entities;
 
+typedef struct ch_block_physics {
+    int _x;
+} ch_block_physics;
+
+typedef struct ch_block_ai {
+    int _x;
+} ch_block_ai;
+
+typedef struct ch_block_templates {
+    int _x;
+} ch_block_templates;
+
+typedef struct ch_block_response_system {
+    int _x;
+} ch_block_response_system;
+
+typedef struct ch_block_commentary {
+    int _x;
+} ch_block_commentary;
+
+typedef struct ch_block_event_queue {
+    int _x;
+} ch_block_event_queue;
+
+typedef struct ch_block_achievements {
+    int _x;
+} ch_block_achievements;
+
+typedef struct ch_block {
+    int16_t vec_idx; // index into block header vec + 1 (0 is invalid)
+    bool header_parsed;
+    bool body_parsed;
+    // one of the ch_block_* structures depending on which index we're at in the array (not the vector)
+    void* data;
+} ch_block;
+
 typedef struct ch_sf_save_data {
     ch_tag tag;
     ch_restored_class save_header;
     ch_restored_class_arr adjacent_levels;
     ch_restored_class_arr light_styles;
-    struct {
-        // TODO automatically get the block name into here, also only allocate when this exists
-        ch_block_entities entities;
-    } blocks;
+    struct ch_cr_utl_vector* block_headers;
+    ch_block blocks[CH_BLOCK_COUNT];
 } ch_sf_save_data;
 
 typedef struct ch_sf_adjacent_client_state {
@@ -176,12 +222,8 @@ typedef struct ch_sf_entity_patch {
 
 typedef struct ch_state_file {
     char name[260];
-    ch_state_file_type sf_type;
-    union {
-        ch_sf_save_data sf_save_data;
-        ch_sf_adjacent_client_state sf_adjacent_client_state;
-        ch_sf_entity_patch sf_entity_patch;
-    };
+    ch_state_file_type type;
+    void* data; // one of the ch_sf_* structures depending on the type
 } ch_state_file;
 
 typedef struct ch_datamap_lookup_entry {

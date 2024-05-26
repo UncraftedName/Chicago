@@ -4,15 +4,15 @@
 #include "ch_byte_reader.h"
 #include "ch_save_internal.h"
 
-typedef struct ch_block {
+typedef struct ch_record {
     ch_byte_reader reader_after_block;
     const char* symbol;
-} ch_block;
+} ch_record;
 
 ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const char** symbol);
 
-ch_err ch_br_start_block(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_block* block);
-ch_err ch_br_end_block(ch_byte_reader* br, ch_block* block, bool check_match);
+ch_err ch_br_start_record(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_record* block);
+ch_err ch_br_end_record(ch_byte_reader* br, ch_record* block, bool check_match);
 
 ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx,
                                   void* dest,

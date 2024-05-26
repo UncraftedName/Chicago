@@ -15,8 +15,8 @@ static ch_err ch_restore_conditions(ch_parsed_save_ctx* ctx, ch_npc_schedule_con
     };
 
     ch_byte_reader* br = &ctx->br;
-    ch_block block;
-    CH_RET_IF_ERR(ch_br_start_block(&ctx->st, br, &block));
+    ch_record block;
+    CH_RET_IF_ERR(ch_br_start_record(&ctx->st, br, &block));
 
     for (size_t i = 0; i < CH_ARRAYSIZE(lists); i++) {
         for (ch_str_ll** ll = lists[i];; ll = &(**ll).next) {
@@ -31,14 +31,14 @@ static ch_err ch_restore_conditions(ch_parsed_save_ctx* ctx, ch_npc_schedule_con
         ch_br_skip_capped(br, 1);
     }
 
-    return ch_br_end_block(br, &block, true);
+    return ch_br_end_record(br, &block, true);
 }
 
 static ch_err ch_restore_navigator(ch_parsed_save_ctx* ctx, ch_npc_navigator** navigator)
 {
     CH_CHECKED_ALLOC(*navigator, ch_arena_calloc(ctx->arena, sizeof **navigator));
-    ch_block block;
-    CH_RET_IF_ERR(ch_br_start_block(&ctx->st, &ctx->br, &block));
+    ch_record block;
+    CH_RET_IF_ERR(ch_br_start_record(&ctx->st, &ctx->br, &block));
     (**navigator).version = ch_br_read_16(&ctx->br);
     bool ok = (**navigator).version == CH_NAVIGATOR_SAVE_VERSION;
 
@@ -55,7 +55,7 @@ static ch_err ch_restore_navigator(ch_parsed_save_ctx* ctx, ch_npc_navigator** n
     if (err == CH_ERR_OUT_OF_MEMORY)
         return err;
 
-    return ch_br_end_block(&ctx->br, &block, false);
+    return ch_br_end_record(&ctx->br, &block, false);
 }
 
 // TODO should be possible to check the vtable of entities and check if there's some custom restore funcs, probably too much effort...
@@ -92,11 +92,11 @@ static ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, 
     return CH_ERR_NONE;
 }
 
-ch_err ch_parse_entity_block_header(ch_parsed_save_ctx* ctx)
+ch_err ch_parse_entity_block_header(ch_parsed_save_ctx* ctx, ch_block_entities* block)
 {
     // CEntitySaveRestoreBlockHandler::ReadRestoreHeaders
 
-    ch_restored_class_arr* ent_table = &ctx->sf_save_data->blocks.entities.entity_table;
+    ch_restored_class_arr* ent_table = &block->entity_table;
 
     ent_table->n_elems = ch_br_read_32(&ctx->br);
     if (ctx->br.overflowed)
@@ -122,11 +122,10 @@ ch_err ch_parse_entity_block_header(ch_parsed_save_ctx* ctx)
     return CH_ERR_NONE;
 }
 
-ch_err ch_parse_entity_block_body(ch_parsed_save_ctx* ctx)
+ch_err ch_parse_entity_block_body(ch_parsed_save_ctx* ctx, ch_block_entities* block)
 {
     // CEntitySaveRestoreBlockHandler::Restore
 
-    ch_block_entities* block = &ctx->sf_save_data->blocks.entities;
     const ch_datamap* dm_ent_table = block->entity_table.dm;
 
     CH_CHECKED_ALLOC(block->entities,

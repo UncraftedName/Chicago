@@ -24,6 +24,11 @@ CH_DECLARE_DUMP_FNS_SINGLE(hl1, g_dump_hl1_fns, const ch_sf_save_data* sf);
 CH_DECLARE_DUMP_FNS_SINGLE(hl2, g_dump_hl2_fns, const ch_sf_adjacent_client_state* sf);
 CH_DECLARE_DUMP_FNS_SINGLE(hl3, g_dump_hl3_fns, const ch_sf_entity_patch* sf);
 
+CH_DECLARE_DUMP_FNS(block, const void* block);
+extern const ch_dump_block_fns g_dump_block_ents_fns, g_dump_block_physics_fns, g_dump_block_ai_fns,
+    g_dump_block_templates_fns, g_dump_block_response_system_fns, g_dump_block_commentary_fns,
+    g_dump_block_event_queue_fns, g_dump_block_achievements_fns;
+
 // custom fields
 
 CH_DECLARE_DUMP_FNS(custom, const ch_type_description* td, const void* restored_field);

@@ -14,17 +14,17 @@ static ch_err ch_dump_sav_text(ch_dump_text* dump, const ch_parsed_save_data* sa
                                           "\nstate file \"%.*s\" (%s):\n",
                                           sizeof sf->name,
                                           sf->name,
-                                          ch_sf_type_strs[sf->sf_type]));
+                                          ch_sf_type_strs[sf->type]));
         dump->indent_lvl++;
-        switch (sf->sf_type) {
+        switch (sf->type) {
             case CH_SF_SAVE_DATA:
-                CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_hl1_fns, dump, &sf->sf_save_data));
+                CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_hl1_fns, dump, sf->data));
                 break;
             case CH_SF_ADJACENT_CLIENT_STATE:
-                CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_hl2_fns, dump, &sf->sf_adjacent_client_state));
+                CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_hl2_fns, dump, sf->data));
                 break;
             case CH_SF_ENTITY_PATCH:
-                CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_hl3_fns, dump, &sf->sf_entity_patch));
+                CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_hl3_fns, dump, sf->data));
                 break;
             case CH_SF_INVALID:
             default:

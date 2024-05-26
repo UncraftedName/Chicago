@@ -1,10 +1,10 @@
 #include <inttypes.h>
 
 #include "ch_dump_decl.h"
+#include "custom_restore/ch_utl_vector.h"
 
 static ch_err ch_dump_hl1_text(ch_dump_text* dump, const ch_sf_save_data* sf)
 {
-
     CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_tag_fns, dump, &sf->tag));
     CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_restored_class_fns, dump, sf->save_header.dm, sf->save_header.data));
 
@@ -43,69 +43,45 @@ static ch_err ch_dump_hl1_text(ch_dump_text* dump, const ch_sf_save_data* sf)
     if (sf->light_styles.n_elems > 0)
         dump->indent_lvl--;
 
-    CH_RET_IF_ERR(ch_dump_text_printf(dump, "block \"Entities\":\n"));
+    CH_RET_IF_ERR(ch_dump_text_printf(dump, "block(s):\n"));
     dump->indent_lvl++;
 
-    const ch_block_entities* ent_block = &sf->blocks.entities;
-
-    ch_type_description* td_classname;
+    ch_type_description* td_name = NULL;
     CH_RET_IF_ERR(
-        ch_find_field_log_if_dne(NULL, ent_block->entity_table.dm, "classname", true, &td_classname, FIELD_STRING));
+        ch_find_field_log_if_dne(NULL, sf->block_headers->embedded_map, "szName", true, &td_name, FIELD_CHARACTER));
 
-    for (size_t i = 0; i < ent_block->entity_table.n_elems; i++) {
-        const ch_restored_entity* ent = ent_block->entities[i];
-        if (!ent)
+    for (size_t i = 0; i < CH_BLOCK_COUNT; i++) {
+        const ch_block* block = &sf->blocks[i];
+        if (block->vec_idx == 0 || !block->header_parsed)
             continue;
-        const char* classname = CH_FIELD_AT(CH_RCA_ELEM_DATA(ent_block->entity_table, i), td_classname, const char*);
-        CH_RET_IF_ERR(ch_dump_text_printf(dump, "entity \"%s\":\n", classname));
+        CH_RET_IF_ERR(ch_dump_text_printf(
+            dump,
+            "block \"%s\":\n",
+            CH_FIELD_AT_PTR(CH_UTL_VEC_ELEM_PTR(*sf->block_headers, block->vec_idx - 1), td_name, const char)));
         dump->indent_lvl++;
-        CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_restored_class_fns,
-                                        dump,
-                                        ent_block->entity_table.dm,
-                                        CH_RCA_ELEM_DATA(ent_block->entity_table, i)));
-        if (ent->npc_header) {
-            CH_RET_IF_ERR(ch_dump_text_printf(dump, "extra data for CAI_BaseNPC:\n"));
-            dump->indent_lvl++;
-            CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_restored_class_fns,
-                                            dump,
-                                            ent->npc_header->extended_header.dm,
-                                            ent->npc_header->extended_header.data));
-            const ch_npc_schedule_conditions* conds = ent->npc_header->schedule_conditions;
-            if (conds) {
-                CH_RET_IF_ERR(ch_dump_text_printf(dump, "conditions:\n"));
-                dump->indent_lvl++;
-                struct {
-                    const char* name;
-                    const ch_str_ll* ll;
-                } cond_info[] = {
-                    {.name = "m_Conditions", .ll = conds->conditions},
-                    {.name = "m_CustomInterruptConditions", .ll = conds->custom_interrupts},
-                    {.name = "m_ConditionsPreIgnore", .ll = conds->pre_ignore},
-                    {.name = "m_IgnoreConditions", .ll = conds->ignore},
-                };
-                for (size_t j = 0; j < CH_ARRAYSIZE(cond_info); j++) {
-                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s: ", cond_info[j].name));
-                    CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_str_ll_fns, dump, cond_info[j].ll));
-                    CH_RET_IF_ERR(ch_dump_text_printf(dump, "\n"));
-                }
-                dump->indent_lvl--;
-            }
-            const ch_npc_navigator* nav = ent->npc_header->navigator;
-            if (nav) {
-                CH_RET_IF_ERR(ch_dump_text_printf(dump, "CAI_Navigator:\n"));
-                dump->indent_lvl++;
-                CH_RET_IF_ERR(ch_dump_text_printf(dump, "version: %" PRId16 "\n", nav->version));
-                if (nav->path_vec)
-                    CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_cr_utl_vec_fns, dump, "minPathName", nav->path_vec));
-                dump->indent_lvl--;
-            }
-            dump->indent_lvl--;
+
+#define _CH_BLOCK_CASE(type, fns)                                 \
+    case type:                                                    \
+        CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(fns, dump, block->data)); \
+        break
+
+        switch (i) {
+            _CH_BLOCK_CASE(CH_BLOCK_ENTITIES, g_dump_block_ents_fns);
+            _CH_BLOCK_CASE(CH_BLOCK_PHYSICS, g_dump_block_physics_fns);
+            _CH_BLOCK_CASE(CH_BLOCK_AI, g_dump_block_ai_fns);
+            _CH_BLOCK_CASE(CH_BLOCK_TEMPLATES, g_dump_block_templates_fns);
+            _CH_BLOCK_CASE(CH_BLOCK_RESPONSE_SYSTEM, g_dump_block_response_system_fns);
+            _CH_BLOCK_CASE(CH_BLOCK_COMMENTARY, g_dump_block_commentary_fns);
+            _CH_BLOCK_CASE(CH_BLOCK_EVENT_QUEUE, g_dump_block_event_queue_fns);
+            _CH_BLOCK_CASE(CH_BLOCK_ACHIEVEMENTS, g_dump_block_achievements_fns);
+            default:
+                assert(0);
+                CH_RET_IF_ERR(ch_dump_text_printf(dump, "AHHHHH\n"));
+                break;
         }
-        CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_restored_class_fns, dump, ent->class_info.dm, ent->class_info.data));
         dump->indent_lvl--;
     }
     dump->indent_lvl--;
-
     return CH_ERR_NONE;
 }
 

@@ -41,7 +41,7 @@ ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const ch
     return CH_ERR_NONE;
 }
 
-ch_err ch_br_start_block(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_block* block)
+ch_err ch_br_start_record(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_record* block)
 {
     int16_t size_bytes = ch_br_read_16(br_cur);
     if (br_cur->overflowed)
@@ -55,7 +55,7 @@ ch_err ch_br_start_block(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_b
     return CH_ERR_NONE;
 }
 
-ch_err ch_br_end_block(ch_byte_reader* br, ch_block* block, bool check_match)
+ch_err ch_br_end_record(ch_byte_reader* br, ch_record* block, bool check_match)
 {
     if (check_match && br->cur != block->reader_after_block.cur)
         return CH_ERR_BAD_BLOCK_END;
@@ -156,8 +156,8 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
     int n_fields = ch_br_read_32(br);
 
     for (int i = 0; i < n_fields; i++) {
-        ch_block block;
-        CH_RET_IF_ERR(ch_br_start_block(&ctx->st, &ctx->br, &block));
+        ch_record block;
+        CH_RET_IF_ERR(ch_br_start_record(&ctx->st, &ctx->br, &block));
 
         // CRestore::FindField
         const ch_type_description* field = NULL;
@@ -203,7 +203,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
         }
 
         // TODO avoid error for CH_ERR_CUSTOM_FIELD_PARSE
-        CH_RET_IF_ERR(ch_br_end_block(br, &block, false)); // TODO SWITCH BACK TO TRUE?
+        CH_RET_IF_ERR(ch_br_end_record(br, &block, false)); // TODO SWITCH BACK TO TRUE?
     }
 
     return CH_ERR_NONE;
