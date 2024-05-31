@@ -199,7 +199,7 @@ static ch_err ch_restore_block_bodies(ch_parsed_save_ctx* ctx, ch_sf_save_data* 
             continue;
         }
 
-        int32_t body_loc = CH_FIELD_AT(CH_UTL_VEC_ELEM_PTR(*sf->block_headers, block->vec_idx), td_loc_body, int32_t);
+        int32_t body_loc = CH_FIELD_AT(CH_UTL_VEC_ELEM_PTR(*sf->block_headers, block->vec_idx - 1), td_loc_body, int32_t);
 
         if (body_loc == -1)
             continue;
