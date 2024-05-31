@@ -43,15 +43,25 @@ ch_err ch_dump_text_flush_nl(ch_dump_text* dump)
     return ferror(dump->f) ? CH_ERR_FILE_IO : CH_ERR_NONE;
 }
 
-static ch_err ch_dump_default_text(ch_dump_text* dump, const char* dump_name)
+ch_err ch_dump_text_log_err(ch_dump_text* dump, const char* fmt, ...)
 {
-    return ch_dump_text_printf(dump, "DUMP NOT IMPLEMENTED (%s)\n", dump_name);
+    va_list va;
+    va_start(va, fmt);
+    ch_err ret = ch_append_str_ll_vfmt(dump->arena, &dump->first_error, &dump->last_error, fmt, va);
+    va_end(va);
+    return ret;
 }
 
-static ch_err ch_dump_default_msgpack(ch_dump_msgpack* dump, const char* dump_name)
+static ch_err ch_dump_default_text(ch_dump_text* dump, const char* dump_fns_name)
+{
+    CH_DUMP_TEXT_LOG_ERR(dump, "text dump not implemented for '%s'", dump_fns_name);
+    return ch_dump_text_printf(dump, "DUMP NOT IMPLEMENTED (%s)\n", dump_fns_name);
+}
+
+static ch_err ch_dump_default_msgpack(ch_dump_msgpack* dump, const char* dump_fns_name)
 {
     char buf[64];
-    snprintf(buf, sizeof buf, "DUMP NOT IMPLEMENTED (%s)", dump_name);
+    snprintf(buf, sizeof buf, "DUMP NOT IMPLEMENTED (%s)", dump_fns_name);
     buf[sizeof(buf) - 1] = '\0';
     CH_DUMP_MP_STR_CHECKED(dump, buf);
     return CH_ERR_NONE;

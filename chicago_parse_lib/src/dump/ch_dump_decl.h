@@ -8,8 +8,13 @@ CH_DECLARE_DUMP_FNS_SINGLE(sav, g_dump_sav_fns, const ch_parsed_save_data* save_
 
 // misc stuff
 
+typedef enum ch_dump_text_str_ll_type {
+    CH_DUMP_TEXT_STR_LL_ARRAY_LIKE, // "[" + ", ".join(ll) + "]"
+    CH_DUMP_TEXT_STR_LL_NL_SEP,     // "\n".join(ll)
+} ch_dump_text_str_ll_type;
+
 CH_DECLARE_DUMP_FNS_SINGLE(tag, g_dump_tag_fns, const ch_tag* tag);
-CH_DECLARE_DUMP_FNS_SINGLE(str_ll, g_dump_str_ll_fns, const ch_str_ll* ll);
+CH_DECLARE_DUMP_FNS_SINGLE(str_ll, g_dump_str_ll_fns, const ch_str_ll* ll, ch_dump_text_str_ll_type type);
 CH_DECLARE_DUMP_FNS_SINGLE(restored_class, g_dump_restored_class_fns, const ch_datamap* dm, const unsigned char* data);
 
 ch_err ch_dump_field_val_text(ch_dump_text* dump,

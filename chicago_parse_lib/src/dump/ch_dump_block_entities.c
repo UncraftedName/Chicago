@@ -41,7 +41,8 @@ static ch_err ch_dump_block_ents_text(ch_dump_text* dump, const ch_block_entitie
                 };
                 for (size_t j = 0; j < CH_ARRAYSIZE(cond_info); j++) {
                     CH_RET_IF_ERR(ch_dump_text_printf(dump, "%s: ", cond_info[j].name));
-                    CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_str_ll_fns, dump, cond_info[j].ll));
+                    CH_RET_IF_ERR(
+                        CH_DUMP_TEXT_CALL(g_dump_str_ll_fns, dump, cond_info[j].ll, CH_DUMP_TEXT_STR_LL_ARRAY_LIKE));
                     CH_RET_IF_ERR(ch_dump_text_printf(dump, "\n"));
                 }
                 dump->indent_lvl--;

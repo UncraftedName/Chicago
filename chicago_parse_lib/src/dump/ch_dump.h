@@ -5,7 +5,6 @@
 #include "thirdparty/msgpack/include/ch_msgpack.h"
 #include "ch_save_internal.h"
 
-// TODO add a ll for errors here too
 typedef struct ch_dump_text {
     FILE* f;
     uint8_t indent_lvl;
@@ -14,10 +13,15 @@ typedef struct ch_dump_text {
     char _pad[1];
     const char* indent_str;
     ch_dump_flags flags;
+    ch_str_ll *first_error, *last_error;
+    ch_arena* arena; // just for the errors
 } ch_dump_text;
 
 ch_err ch_dump_text_printf(ch_dump_text* dump, const char* fmt, ...);
 ch_err ch_dump_text_flush_nl(ch_dump_text* dump);
+ch_err ch_dump_text_log_err(ch_dump_text* dump, const char* fmt, ...);
+#define CH_DUMP_TEXT_LOG_ERR(dump, fmt, ...) \
+    CH_RET_IF_ERR(ch_dump_text_log_err(dump, "[%s]: " fmt ".", __FUNCTION__, __VA_ARGS__))
 
 typedef struct ch_dump_msgpack {
     msgpack_packer pk;

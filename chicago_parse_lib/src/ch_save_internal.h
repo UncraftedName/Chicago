@@ -46,7 +46,16 @@ typedef struct ch_parsed_save_ctx {
     } ent_outputs_cache;
 } ch_parsed_save_ctx;
 
-ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...);
+ch_err ch_append_str_ll_vfmt(ch_arena* arena, ch_str_ll** first_err, ch_str_ll** last_err, const char* fmt, va_list va);
+
+static ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, ...)
+{
+    va_list va;
+    va_start(va, fmt);
+    ch_err ret = ch_append_str_ll_vfmt(ctx->arena, &ctx->data->errors_ll, &ctx->last_error, fmt, va);
+    va_end(va);
+    return ret;
+}
 
 // This will override any error that we were about to return, but that's okay since
 // the only error the logging function can return is OOM and that's more critical.
