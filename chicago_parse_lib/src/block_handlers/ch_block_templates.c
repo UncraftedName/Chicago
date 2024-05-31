@@ -11,8 +11,10 @@ ch_err ch_parse_block_templates_body(ch_parsed_save_ctx* ctx, ch_block_templates
 {
     // CTemplate_SaveRestoreBlockHandler::Restore
 
-    if (block->version != CH_HEADER_TEMPLATE_SAVE_RESTORE_VERSION)
+    if (block->version != CH_HEADER_TEMPLATE_SAVE_RESTORE_VERSION) {
+        CH_PARSER_LOG_ERR(ctx, "funny templates version: %d", block->version);
         return CH_ERR_UNSUPPORTED_BLOCK_VERSION;
+    }
 
     ch_byte_reader* br = &ctx->br;
 

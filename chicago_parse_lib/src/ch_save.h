@@ -58,9 +58,7 @@
                                           \
     /* dump errors */                     \
     GEN(CH_ERR_FILE_IO)                   \
-    GEN(CH_ERR_MSGPACK)                   \
-    GEN(CH_ERR_FMT_TOO_LONG)              \
-    GEN(CH_ERR_ENCODING)
+    GEN(CH_ERR_MSGPACK)
 
 typedef enum ch_err { CH_FOREACH_ERR(CH_GENERATE_ENUM) } ch_err;
 static const char* const ch_err_strs[] = {CH_FOREACH_ERR(CH_GENERATE_STRING)};

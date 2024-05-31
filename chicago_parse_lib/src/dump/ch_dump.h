@@ -5,16 +5,22 @@
 #include "thirdparty/msgpack/include/ch_msgpack.h"
 #include "ch_save_internal.h"
 
+#define CH_DUMP_TEXT_MAX_INDENT 16
+
 typedef struct ch_dump_text {
     FILE* f;
     uint8_t indent_lvl;
     bool pending_nl;
     uint8_t indent_str_len;
     char _pad[1];
-    const char* indent_str;
     ch_dump_flags flags;
     ch_str_ll *first_error, *last_error;
-    ch_arena* arena; // just for the errors
+
+    char* indent_str_buf;
+    char* write_buf;
+    size_t write_buf_size;
+
+    ch_arena* arena;
 } ch_dump_text;
 
 ch_err ch_dump_text_printf(ch_dump_text* dump, const char* fmt, ...);

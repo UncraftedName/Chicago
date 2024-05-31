@@ -33,6 +33,7 @@ int main(void)
     assert(res == CH_ERR_NONE);
 
     ch_parsed_save_data* save_data = ch_parsed_save_new();
+    assert(save_data);
     ch_byte_array ba_save;
     ch_load_file("G:/Games/portal/Portal Source/portal/SAVE/quick.sav", &ba_save, CH_SAVE_FILE_MAX_SIZE);
     ch_parse_info info = {
@@ -47,7 +48,8 @@ int main(void)
         printf("Test result: %.4s\n", save_data->tag.id);
 
     FILE* f = fopen("test.txt", "w");
-    ch_dump_sav_to_text(f, save_data, "  ", 0);
+    err = ch_dump_sav_to_text(f, save_data, "  ", 0);
+    assert(!err);
     fclose(f);
     ch_parsed_save_free(save_data);
 

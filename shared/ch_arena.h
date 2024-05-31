@@ -16,6 +16,7 @@ typedef struct ch_arena {
     size_t chunk_size;
 #ifndef NDEBUG
     size_t total_alloc;
+    size_t total_used;
     size_t n_chunks;
 #endif
 } ch_arena;
@@ -38,7 +39,8 @@ static ch_arena* ch_arena_new(size_t init_chunk_size)
     a->n_free = init_chunk_size;
     a->chunk_size = init_chunk_size;
 #ifndef NDEBUG
-    a->total_alloc = 0;
+    a->total_alloc = first_alloc_size;
+    a->total_used = sizeof(ch_arena);
     a->n_chunks = 1;
 #endif
     return a;
@@ -57,6 +59,7 @@ static void ch_arena_free(ch_arena* arena)
 
 static void* ch_arena_alloc(ch_arena* arena, size_t n)
 {
+    assert(arena);
     n = max(n, 1); // make sure size of 0 doesn't return null
     if (arena->n_free < n) {
         arena->chunk_size = arena->chunk_size * 2;
@@ -73,6 +76,7 @@ static void* ch_arena_alloc(ch_arena* arena, size_t n)
         arena->n_free = arena->chunk_size - sizeof(ch_arena_chunk);
 #ifndef NDEBUG
         arena->n_chunks++;
+        arena->total_alloc += arena->chunk_size;
 #endif
     }
     void* ret = (void*)arena->ptr;
@@ -80,7 +84,7 @@ static void* ch_arena_alloc(ch_arena* arena, size_t n)
     arena->ptr += n;
     arena->n_free -= n;
 #ifndef NDEBUG
-    arena->total_alloc += n;
+    arena->total_used += n;
 #endif
     return ret;
 }
