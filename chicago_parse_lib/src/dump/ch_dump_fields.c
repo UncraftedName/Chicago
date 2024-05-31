@@ -257,6 +257,8 @@ static ch_err ch_dump_restored_fields_text(ch_dump_text* dump, const ch_datamap*
                         if (*custom_ptr) {
                             CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(*td->save_restore_ops->dump_fns, dump, td, *custom_ptr));
                         } else {
+                            // TODO come up with a way to call the custom dump fns even if the field is not restored -
+                            // this is tricky for e.g. vectors where the type name is currently stored in the vector struct...
                             CH_RET_IF_ERR(ch_dump_text_printf(dump, "CUSTOM %s: <null>\n", td->name));
                         }
                     } else {

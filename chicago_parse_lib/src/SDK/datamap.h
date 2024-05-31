@@ -177,15 +177,6 @@ typedef struct ch_custom_ops {
 #define CH_DATAMAP_STRUCT_VERSION 5
 #define CH_COLLECTION_FILE_MAGIC "chicago"
 
-/*
-* This tag is put at the end of the file so that we can allocate one big bungus buffer
-* and assign our ch_datamap_collection pointer to that, then free it once we're done.
-* When reading from disk, we can jump to the end of the file and read only the tag
-* without issue. But when using miniz, we can only decompress blocks of at least 64KB
-* at a time. Since the datamap collection files should be relatively small, I don't
-* care about the overhead of copying the entire file into mem before checking if the
-* tag is valid.
-*/
 typedef struct ch_datamap_collection_header {
     char magic[8];  // CH_COLLECTION_FILE_MAGIC
     size_t version; // CH_DATAMAP_STRUCT_VERSION
