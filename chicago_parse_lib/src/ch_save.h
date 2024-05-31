@@ -15,50 +15,51 @@
 #define CH_GENERATE_STRING(v) #v,
 
 // TODO move this bad boy to a separate file so that the search lib only includes what's required
-#define CH_FOREACH_ERR(GEN)            \
-    GEN(CH_ERR_NONE)                   \
-                                       \
-    /* generic errors */               \
-    GEN(CH_ERR_FAILED_TO_READ_FILE)    \
-    GEN(CH_ERR_OUT_OF_MEMORY)          \
-    GEN(CH_ERR_READER_OVERFLOWED)      \
-    GEN(CH_ERR_WRITER_OVERFLOWED)      \
-    GEN(CH_ERR_BAD_SYMBOL_TABLE)       \
-    GEN(CH_ERR_DATAMAP_NOT_FOUND)      \
-                                       \
-    /* custom field registration */    \
-    GEN(CH_ERR_CUSTOM_FIELD_CONFLICT)  \
-                                       \
-    /* .sav header errors */           \
-    GEN(CH_ERR_SAV_BAD_TAG)            \
-                                       \
-    /* errors for field parsing */     \
-    GEN(CH_ERR_BAD_FIELDS_MARKER)      \
-    GEN(CH_ERR_BAD_SYMBOL)             \
-    GEN(CH_ERR_BAD_FIELD_COUNT)        \
-    GEN(CH_ERR_FIELD_NOT_FOUND)        \
-    GEN(CH_ERR_BAD_FIELD_TYPE)         \
-    GEN(CH_ERR_BAD_BLOCK_START)        \
-    GEN(CH_ERR_BAD_BLOCK_END)          \
-    GEN(CH_ERR_BAD_FIELD_READ)         \
-    GEN(CH_ERR_CUSTOM_FIELD_PARSE)     \
-                                       \
-    /* state file errors */            \
-    GEN(CH_ERR_BAD_STATE_FILE_LENGTH)  \
-    GEN(CC_ERR_BAD_STATE_FILE_COUNT)   \
-    GEN(CC_ERR_BAD_STATE_FILE_NAME)    \
-                                       \
-    /* .hl1 errors */                  \
-    GEN(CH_ERR_HL1_BAD_TAG)            \
-                                       \
-    /* .hl2 errors */                  \
-    GEN(CH_ERR_HL2_BAD_TAG)            \
-    GEN(CH_ERR_HL2_BAD_SECTION_HEADER) \
-                                       \
-    /* dump errors */                  \
-    GEN(CH_ERR_FILE_IO)                \
-    GEN(CH_ERR_MSGPACK)                \
-    GEN(CH_ERR_FMT_TOO_LONG)           \
+#define CH_FOREACH_ERR(GEN)               \
+    GEN(CH_ERR_NONE)                      \
+                                          \
+    /* generic errors */                  \
+    GEN(CH_ERR_READER_OVERFLOWED)         \
+    GEN(CH_ERR_FAILED_TO_READ_FILE)       \
+    GEN(CH_ERR_OUT_OF_MEMORY)             \
+    GEN(CH_ERR_WRITER_OVERFLOWED)         \
+    GEN(CH_ERR_BAD_SYMBOL_TABLE)          \
+    GEN(CH_ERR_DATAMAP_NOT_FOUND)         \
+                                          \
+    /* custom field registration */       \
+    GEN(CH_ERR_CUSTOM_FIELD_CONFLICT)     \
+                                          \
+    /* .sav header errors */              \
+    GEN(CH_ERR_SAV_BAD_TAG)               \
+                                          \
+    /* errors for field parsing */        \
+    GEN(CH_ERR_BAD_FIELDS_MARKER)         \
+    GEN(CH_ERR_BAD_SYMBOL)                \
+    GEN(CH_ERR_BAD_FIELD_COUNT)           \
+    GEN(CH_ERR_FIELD_NOT_FOUND)           \
+    GEN(CH_ERR_BAD_FIELD_TYPE)            \
+    GEN(CH_ERR_BAD_BLOCK_START)           \
+    GEN(CH_ERR_BAD_BLOCK_END)             \
+    GEN(CH_ERR_BAD_FIELD_READ)            \
+    GEN(CH_ERR_CUSTOM_FIELD_PARSE)        \
+                                          \
+    /* state file errors */               \
+    GEN(CH_ERR_BAD_STATE_FILE_LENGTH)     \
+    GEN(CC_ERR_BAD_STATE_FILE_COUNT)      \
+    GEN(CC_ERR_BAD_STATE_FILE_NAME)       \
+                                          \
+    /* .hl1 errors */                     \
+    GEN(CH_ERR_HL1_BAD_TAG)               \
+    GEN(CH_ERR_UNSUPPORTED_BLOCK_VERSION) \
+                                          \
+    /* .hl2 errors */                     \
+    GEN(CH_ERR_HL2_BAD_TAG)               \
+    GEN(CH_ERR_HL2_BAD_SECTION_HEADER)    \
+                                          \
+    /* dump errors */                     \
+    GEN(CH_ERR_FILE_IO)                   \
+    GEN(CH_ERR_MSGPACK)                   \
+    GEN(CH_ERR_FMT_TOO_LONG)              \
     GEN(CH_ERR_ENCODING)
 
 typedef enum ch_err { CH_FOREACH_ERR(CH_GENERATE_ENUM) } ch_err;
@@ -161,6 +162,17 @@ typedef struct ch_restored_entity {
     ch_custom_ent_restore_speaker* speaker_info; // only if the entity inherits from CSpeaker
 } ch_restored_entity;
 
+typedef struct ch_template_data {
+    unsigned char* template_data; // type: ch_block_templates.dm_template
+    char* name;
+    char* map_data;
+} ch_template_data;
+
+// TODO rename all of these
+#define CH_HEADER_AI_FIRST_VERSION_WITH_CONDITIONS 2
+#define CH_HEADER_AI_FIRST_VERSION_WITH_NAVIGATOR_SAVE 5
+#define CH_NAVIGATOR_SAVE_VERSION 1
+
 typedef struct ch_block_entities {
     ch_restored_class_arr entity_table;
     ch_restored_entity** entities; // has entity_table.n_elems entities
@@ -174,8 +186,14 @@ typedef struct ch_block_ai {
     int _x;
 } ch_block_ai;
 
+#define CH_HEADER_TEMPLATE_SAVE_RESTORE_VERSION 1
+
 typedef struct ch_block_templates {
-    int _x;
+    int16_t version;
+    int16_t n_templates;
+    const ch_datamap* dm_template;
+    ch_template_data* templates;
+    int32_t template_instance; // TODO what the hell is this?
 } ch_block_templates;
 
 typedef struct ch_block_response_system {
@@ -186,8 +204,13 @@ typedef struct ch_block_commentary {
     int _x;
 } ch_block_commentary;
 
+#define CH_HEADER_EVENTQUEUE_SAVE_RESTORE_VERSION 1
+
 typedef struct ch_block_event_queue {
-    int _x;
+    int16_t version;
+    char _pad[2];
+    ch_restored_class queue;
+    ch_restored_class_arr events;
 } ch_block_event_queue;
 
 typedef struct ch_block_achievements {

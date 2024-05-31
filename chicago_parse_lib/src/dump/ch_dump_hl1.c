@@ -76,6 +76,7 @@ static ch_err ch_dump_hl1_text(ch_dump_text* dump, const ch_sf_save_data* sf)
             _CH_BLOCK_CASE(CH_BLOCK_ACHIEVEMENTS, g_dump_block_achievements_fns);
             default:
                 assert(0);
+                // TODO
                 CH_RET_IF_ERR(ch_dump_text_printf(dump, "AHHHHH\n"));
                 break;
         }

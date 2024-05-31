@@ -1,7 +1,6 @@
 #include "ch_save_internal.h"
 #include "ch_field_reader.h"
 #include "custom_restore/ch_utl_vector.h"
-#include "block_handlers/ch_block_ents.h"
 
 typedef struct ch_hl1_sections {
     int32_t symbol_table_size_bytes;
@@ -18,6 +17,14 @@ typedef struct ch_block_handler {
     ch_err (*fn_parse_body)(ch_parsed_save_ctx* ctx, void* block_data);
 } ch_block_handler;
 
+#define _CH_DECLARE_BLOCK_FNS(fn_name, struct_name)                                        \
+    ch_err ch_parse_block_##fn_name##_header(ch_parsed_save_ctx* ctx, struct_name* block); \
+    ch_err ch_parse_block_##fn_name##_body(ch_parsed_save_ctx* ctx, struct_name* block)
+
+_CH_DECLARE_BLOCK_FNS(entities, ch_block_entities);
+_CH_DECLARE_BLOCK_FNS(templates, ch_block_templates);
+_CH_DECLARE_BLOCK_FNS(event_queue, ch_block_event_queue);
+
 /*
 * Each block has an associated header & body. If information needs to be
 * shared between them, then it should be stored in either the ctx or the
@@ -29,8 +36,8 @@ static const ch_block_handler ch_block_handlers[CH_BLOCK_COUNT] = {
     {
         .name = "Entities",
         .alloc_size = sizeof(ch_block_entities),
-        .fn_parse_header = ch_parse_entity_block_header,
-        .fn_parse_body = ch_parse_entity_block_body,
+        .fn_parse_header = ch_parse_block_entities_header,
+        .fn_parse_body = ch_parse_block_entities_body,
     },
     {
         .name = "Physics",
@@ -43,6 +50,8 @@ static const ch_block_handler ch_block_handlers[CH_BLOCK_COUNT] = {
     {
         .name = "Templates",
         .alloc_size = sizeof(ch_block_templates),
+        .fn_parse_header = ch_parse_block_templates_header,
+        .fn_parse_body = ch_parse_block_templates_body,
     },
     {
         .name = "ResponseSystem",
@@ -55,6 +64,8 @@ static const ch_block_handler ch_block_handlers[CH_BLOCK_COUNT] = {
     {
         .name = "EventQueue",
         .alloc_size = sizeof(ch_block_event_queue),
+        .fn_parse_header = ch_parse_block_event_queue_header,
+        .fn_parse_body = ch_parse_block_event_queue_body,
     },
     {
         .name = "Achievement",
@@ -85,7 +96,7 @@ static ch_err ch_restore_block_headers(ch_parsed_save_ctx* ctx, ch_sf_save_data*
     * have a corresponding handler.
     */
 
-    for (size_t i = 0; i < sf->block_headers->n_elems; i++) {
+    for (uint32_t i = 0; i < sf->block_headers->n_elems; i++) {
         unsigned char* header_data = CH_UTL_VEC_ELEM_PTR(*sf->block_headers, i);
         const char* header_name = CH_FIELD_AT_PTR(header_data, td_name, const char);
         size_t j = 0;

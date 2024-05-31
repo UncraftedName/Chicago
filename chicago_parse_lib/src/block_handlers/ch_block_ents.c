@@ -1,7 +1,6 @@
 #include "ch_save_internal.h"
 #include "ch_field_reader.h"
 #include "custom_restore/ch_utl_vector.h"
-#include "ch_block_ents.h"
 
 static ch_err ch_restore_conditions(ch_parsed_save_ctx* ctx, ch_npc_schedule_conditions** schedule_conditions)
 {
@@ -64,10 +63,12 @@ static ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, 
 {
     // CEntitySaveRestoreBlockHandler::RestoreEntity
 
+    const ch_datamap* dm_ent;
+    CH_RET_IF_ERR(ch_lookup_datamap(ctx, classname, &dm_ent));
     CH_CHECKED_ALLOC(*pp_ent, ch_arena_calloc(ctx->arena, sizeof **pp_ent));
     ch_restored_entity* ent = *pp_ent;
     ent->classname = classname;
-    CH_RET_IF_ERR(ch_lookup_datamap(ctx, classname, &ent->class_info.dm));
+    ent->class_info.dm = dm_ent;
 
     if (ch_dm_inherts_from(ent->class_info.dm, "CAI_BaseNPC")) {
         // CAI_BaseNPC::Restore
@@ -77,10 +78,15 @@ static ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, 
         ch_type_description* td_version;
         CH_RET_IF_ERR(ch_find_field(ent->npc_header->extended_header.dm, "version", true, &td_version));
         int16_t version = CH_FIELD_AT(ent->npc_header->extended_header.data, td_version, int16_t);
+        // TODO - log error on bad version
         if (version >= CH_HEADER_AI_FIRST_VERSION_WITH_CONDITIONS)
             CH_RET_IF_ERR(ch_restore_conditions(ctx, &ent->npc_header->schedule_conditions));
+        else
+            assert(0);
         if (version >= CH_HEADER_AI_FIRST_VERSION_WITH_NAVIGATOR_SAVE)
             CH_RET_IF_ERR(ch_restore_navigator(ctx, &ent->npc_header->navigator));
+        else
+            assert(0);
     }
 
     CH_CHECKED_ALLOC(ent->class_info.data, ch_arena_calloc(ctx->arena, ent->class_info.dm->ch_size));
@@ -92,7 +98,7 @@ static ch_err ch_restore_entity(ch_parsed_save_ctx* ctx, const char* classname, 
     return CH_ERR_NONE;
 }
 
-ch_err ch_parse_entity_block_header(ch_parsed_save_ctx* ctx, ch_block_entities* block)
+ch_err ch_parse_block_entities_header(ch_parsed_save_ctx* ctx, ch_block_entities* block)
 {
     // CEntitySaveRestoreBlockHandler::ReadRestoreHeaders
 
@@ -122,7 +128,7 @@ ch_err ch_parse_entity_block_header(ch_parsed_save_ctx* ctx, ch_block_entities* 
     return CH_ERR_NONE;
 }
 
-ch_err ch_parse_entity_block_body(ch_parsed_save_ctx* ctx, ch_block_entities* block)
+ch_err ch_parse_block_entities_body(ch_parsed_save_ctx* ctx, ch_block_entities* block)
 {
     // CEntitySaveRestoreBlockHandler::Restore
 
