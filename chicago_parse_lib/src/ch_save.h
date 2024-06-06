@@ -7,7 +7,6 @@
 
 #include "SDK/datamap.h"
 #include "thirdparty/hashmap/hashmap.h"
-#include "ch_arena.h"
 
 #define CH_SAVE_FILE_MAX_SIZE (1024 * 1024 * 32)
 
@@ -287,7 +286,10 @@ typedef struct ch_parsed_save_data {
     ch_state_file* state_files;
     size_t n_state_files;
     ch_str_ll* errors_ll;
-    ch_arena* _arena;
+
+    // these are internal & kpet around for cleanup
+    struct ch_arena* _arena;
+    struct ch_symbol_table* _last_st;
 } ch_parsed_save_data;
 
 ch_parsed_save_data* ch_parsed_save_new(void);

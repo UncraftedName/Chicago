@@ -156,7 +156,7 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     if (st_size_bytes > 0) {
         ch_byte_reader br_st = ch_br_split_skip(br, st_size_bytes);
         CH_RET_IF_BR_OVERFLOWED(br);
-        CH_RET_IF_ERR(ch_br_read_symbol_table(&br_st, &ctx->st, st_n_symbols));
+        CH_RET_IF_ERR(ch_br_read_symbol_table(&br_st, &ctx->data->_last_st, st_n_symbols));
     }
 
     // read global fields
@@ -166,7 +166,6 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     CH_RET_IF_ERR(ch_br_restore_class_by_name(ctx, "GameHeader", "GAME_HEADER", &ctx->data->game_header));
     CH_RET_IF_ERR(ch_br_restore_class_by_name(ctx, "GLOBAL", "CGlobalState", &ctx->data->global_state));
     *br = br_after_fields;
-    ch_free_symbol_table(&ctx->st);
     if (err)
         return err;
 
@@ -242,7 +241,7 @@ ch_err ch_parse_state_file(ch_parsed_save_ctx* ctx, ch_state_file* sf)
 
 ch_parsed_save_data* ch_parsed_save_new(void)
 {
-    ch_arena* arena = ch_arena_new(max(4096, sizeof(ch_parsed_save_data)));
+    ch_arena* arena = ch_arena_new(1024 * 128);
     if (!arena)
         return NULL;
     ch_parsed_save_data* parsed_data = ch_arena_calloc(arena, sizeof(ch_parsed_save_data));
@@ -254,8 +253,8 @@ ch_parsed_save_data* ch_parsed_save_new(void)
     return parsed_data;
 }
 
-// TODO figure out what the hell to do with the symbol tables
 void ch_parsed_save_free(ch_parsed_save_data* parsed_data)
 {
+    free(parsed_data->_last_st);
     ch_arena_free(parsed_data->_arena);
 }

@@ -53,5 +53,8 @@ int main(void)
     fclose(f);
     ch_parsed_save_free(save_data);
 
+    hashmap_free(col.lookup);
+    free(ba_col.arr);
+    free(ba_save.arr);
     return 0;
 }

@@ -32,20 +32,8 @@ ch_err ch_parse_block_templates_body(ch_parsed_save_ctx* ctx, ch_block_templates
         ch_template_data* tpl = &block->templates[i];
         CH_CHECKED_ALLOC(tpl->template_data, ch_arena_calloc(ctx->arena, block->dm_template->ch_size));
         CH_RET_IF_ERR(ch_br_restore_recursive(ctx, block->dm_template, tpl->template_data));
-
-        size_t str_len = ch_br_strnlen(br, 2048);
-        CH_CHECKED_ALLOC(tpl->name, ch_arena_alloc(ctx->arena, str_len + 1));
-        ch_br_read(br, tpl->name, str_len);
-        tpl->name[str_len] = '\0';
-        ch_br_skip_capped(br, 1);
-
-        // The iMapDataLength field is how much space the game allocates for the pszMapData field when restoring,
-        // but the actual string is just read with pRestore->ReadString(); not really sure what that's about.
-        str_len = ch_br_strnlen(br, CH_FIELD_AT(tpl->template_data, td_map_data_len, int32_t));
-        CH_CHECKED_ALLOC(tpl->map_data, ch_arena_alloc(ctx->arena, str_len + 1));
-        ch_br_read(br, tpl->map_data, str_len);
-        tpl->map_data[str_len] = '\0';
-        ch_br_skip_capped(br, 1);
+        CH_RET_IF_ERR(ch_br_read_str(br, ctx->arena, &tpl->name));
+        CH_RET_IF_ERR(ch_br_read_str(br, ctx->arena, &tpl->map_data));
     }
     return CH_ERR_NONE;
 }

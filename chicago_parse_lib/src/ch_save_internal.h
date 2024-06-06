@@ -5,6 +5,7 @@
 
 #include "ch_byte_reader.h"
 #include "ch_save.h"
+#include "ch_arena.h"
 
 #define CH_ARRAYSIZE(a) (sizeof(a) / sizeof(*(a)))
 
@@ -17,9 +18,10 @@
 
 #define CH_CHECKED_ALLOC(to, alloc_op)   \
     do {                                 \
-        (to) = alloc_op;                 \
-        if (!(to))                       \
+        void* tmp = alloc_op;            \
+        if (!tmp)                        \
             return CH_ERR_OUT_OF_MEMORY; \
+        (to) = tmp;                      \
     } while (0)
 
 #define CH_RET_IF_BR_OVERFLOWED(br_ptr) \
@@ -28,8 +30,8 @@
 
 typedef struct ch_symbol_table {
     const char* symbols;
-    int n_symbols;
-    int* symbol_offs;
+    int32_t n_symbols;
+    int32_t* symbol_offs;
 } ch_symbol_table;
 
 // a wrapper of the parsed data with some additional context
@@ -38,7 +40,6 @@ typedef struct ch_parsed_save_ctx {
     ch_parsed_save_data* data;
     ch_arena* arena; // same pointer as in the save data
     ch_byte_reader br;
-    ch_symbol_table st;
     ch_str_ll* last_error;
     // some stuff is stored relative to a 'base' in the file and needs to be saved across function calls
     ch_byte_reader br_cur_base;
@@ -68,7 +69,7 @@ static ch_err ch_parse_save_log_error(ch_parsed_save_ctx* ctx, const char* fmt, 
 
 // Creates and allocates symbol_offs if CH_ERR_NONE - make sure to free it!
 // br should be only big enough to fit the symbol table.
-ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table* st, int n_symbols);
+ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table** st, int n_symbols);
 
 static inline void ch_free_symbol_table(ch_symbol_table* st)
 {

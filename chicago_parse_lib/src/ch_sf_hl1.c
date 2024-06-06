@@ -251,7 +251,7 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
     if (sections.symbol_table_size_bytes > 0) {
         ch_byte_reader br_st = ch_br_split_skip(br, sections.symbol_table_size_bytes);
         CH_RET_IF_BR_OVERFLOWED(br);
-        CH_RET_IF_ERR(ch_br_read_symbol_table(&br_st, &ctx->st, sections.n_symbols));
+        CH_RET_IF_ERR(ch_br_read_symbol_table(&br_st, &ctx->data->_last_st, sections.n_symbols));
     }
 
     ctx->br_cur_base = ctx->br;

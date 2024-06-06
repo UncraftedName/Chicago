@@ -44,17 +44,6 @@ inline size_t ch_br_remaining(const ch_byte_reader* br)
     return ch_br_overflowed(br) ? 0 : (size_t)br->end - (size_t)br->cur;
 }
 
-inline void ch_br_skip_capped(ch_byte_reader* br, size_t n)
-{
-    ch_br_skip_unchecked(br, min(n, ch_br_remaining(br)));
-}
-
-inline size_t ch_br_strnlen(const ch_byte_reader* br, size_t max_search)
-{
-    max_search = min(max_search, ch_br_remaining(br));
-    return strnlen((const char*)br->cur, max_search);
-}
-
 inline size_t ch_br_strlen(const ch_byte_reader* br)
 {
     return strnlen((const char*)br->cur, ch_br_remaining(br));
@@ -65,10 +54,11 @@ inline bool ch_br_read(ch_byte_reader* br, void* dest, size_t n)
     if (ch_br_could_skip(br, n)) {
         memcpy(dest, br->cur, n);
         br->cur += n;
+        return true;
     } else {
         ch_br_set_overflowed(br);
+        return false;
     }
-    return !ch_br_overflowed(br);
 }
 
 /*

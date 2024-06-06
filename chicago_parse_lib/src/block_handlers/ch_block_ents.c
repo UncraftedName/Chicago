@@ -15,19 +15,17 @@ static ch_err ch_restore_conditions(ch_parsed_save_ctx* ctx, ch_npc_schedule_con
 
     ch_byte_reader* br = &ctx->br;
     ch_record block;
-    CH_RET_IF_ERR(ch_br_start_record(&ctx->st, br, &block));
+    CH_RET_IF_ERR(ch_br_start_record(ctx->data->_last_st, br, &block));
 
     for (size_t i = 0; i < CH_ARRAYSIZE(lists); i++) {
         for (ch_str_ll** ll = lists[i];; ll = &(**ll).next) {
-            size_t len = ch_br_strlen(br);
-            if (len == 0)
+            char* tmp;
+            CH_RET_IF_ERR(ch_br_read_str(br, ctx->arena, &tmp));
+            if (!*tmp)
                 break;
-            CH_CHECKED_ALLOC(*ll, ch_arena_calloc(ctx->arena, sizeof(**ll) + len + 1));
-            (**ll).str = (char*)(*ll + 1);
-            ch_br_read(br, (**ll).str, len);
-            ch_br_skip_capped(br, 1);
+            CH_CHECKED_ALLOC(*ll, ch_arena_calloc(ctx->arena, sizeof(**ll)));
+            (**ll).str = tmp;
         }
-        ch_br_skip_capped(br, 1);
     }
 
     return ch_br_end_record(br, &block, true);
@@ -37,7 +35,7 @@ static ch_err ch_restore_navigator(ch_parsed_save_ctx* ctx, ch_npc_navigator** n
 {
     CH_CHECKED_ALLOC(*navigator, ch_arena_calloc(ctx->arena, sizeof **navigator));
     ch_record block;
-    CH_RET_IF_ERR(ch_br_start_record(&ctx->st, &ctx->br, &block));
+    CH_RET_IF_ERR(ch_br_start_record(ctx->data->_last_st, &ctx->br, &block));
     (**navigator).version = ch_br_read_16(&ctx->br);
     bool ok = (**navigator).version == CH_NAVIGATOR_SAVE_VERSION;
 

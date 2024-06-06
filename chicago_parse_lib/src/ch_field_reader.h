@@ -14,6 +14,9 @@ ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const ch
 ch_err ch_br_start_record(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_record* block);
 ch_err ch_br_end_record(ch_byte_reader* br, ch_record* block, bool check_match);
 
+ch_err ch_br_read_str(ch_byte_reader* br, ch_arena* arena, char** str_out);
+ch_err ch_br_read_str_n(ch_byte_reader* br, ch_arena* arena, char** str_out, size_t read_bytes);
+
 ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx,
                                   void* dest,
                                   ch_field_type ft,

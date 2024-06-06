@@ -5,29 +5,23 @@
 #include "ch_field_reader.h"
 #include "ch_save_internal.h"
 
-ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table* st, int n_symbols)
+ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table** st, int n_symbols)
 {
     if (n_symbols < 0)
         return CH_ERR_BAD_SYMBOL_TABLE;
-    st->symbols = (const char*)br->cur;
-    st->n_symbols = n_symbols;
-    // TODO - change to realloc
-    st->symbol_offs = calloc(st->n_symbols, sizeof *st->symbol_offs);
-    if (!st->symbol_offs)
-        return CH_ERR_OUT_OF_MEMORY;
+    CH_CHECKED_ALLOC(*st, realloc(*st, sizeof(ch_symbol_table) + n_symbols * sizeof(int32_t)));
+    ch_symbol_table* st_ptr = *st;
+    st_ptr->symbols = (const char*)br->cur;
+    st_ptr->n_symbols = n_symbols;
+    st_ptr->symbol_offs = (int32_t*)(st_ptr + 1);
 
     const unsigned char* start = br->cur;
     for (int i = 0; i < n_symbols && !ch_br_overflowed(br); i++) {
         if (*br->cur)
-            st->symbol_offs[i] = br->cur - start;
-        ch_br_skip(br, strnlen((const char*)br->cur, br->end - br->cur) + 1);
+            st_ptr->symbol_offs[i] = (int32_t)(br->cur - start);
+        ch_br_skip(br, ch_br_strlen(br) + 1);
     }
-    if (ch_br_overflowed(br)) {
-        ch_free_symbol_table(st);
-        return CH_ERR_BAD_SYMBOL_TABLE; // being more specific than reader overflow
-    } else {
-        return CH_ERR_NONE;
-    }
+    return ch_br_overflowed(br) ? CH_ERR_BAD_SYMBOL_TABLE : CH_ERR_NONE;
 }
 
 ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const char** symbol)
@@ -61,6 +55,27 @@ ch_err ch_br_end_record(ch_byte_reader* br, ch_record* block, bool check_match)
     return CH_ERR_NONE;
 }
 
+// These string reading functions are a bit weird, and they may read/skip more
+// bytes than necessary, but it's basically how CRestore::ReadString works...
+
+ch_err ch_br_read_str(ch_byte_reader* br, ch_arena* arena, char** str_out)
+{
+    return ch_br_read_str_n(br, arena, str_out, ch_br_strlen(br) + 1);
+}
+
+ch_err ch_br_read_str_n(ch_byte_reader* br, ch_arena* arena, char** str_out, size_t read_bytes)
+{
+    if (read_bytes == 0) {
+        *str_out = "";
+    } else {
+        CH_RET_IF_BR_OVERFLOWED(br);
+        CH_CHECKED_ALLOC(*str_out, ch_arena_alloc(arena, read_bytes + 1));
+        ch_br_read(br, *str_out, min(read_bytes, ch_br_remaining(br)));
+        (*str_out)[read_bytes] = '\0';
+    }
+    return CH_ERR_NONE;
+}
+
 ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx,
                                   void* dest,
                                   ch_field_type ft,
@@ -76,16 +91,8 @@ ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx,
         case FIELD_FUNCTION:
         case FIELD_MODELINDEX:
         case FIELD_MATERIALINDEX: {
-            for (size_t i = 0; ch_br_remaining(br) > 0 && i < n_elems; i++) {
-                size_t len = ch_br_strlen(br);
-                if (len > 0) {
-                    char** alloc_dest = (char**)dest + i;
-                    CH_CHECKED_ALLOC(*alloc_dest, ch_arena_alloc(ctx->arena, len + 1));
-                    ch_br_read(br, *alloc_dest, len);
-                    (*alloc_dest)[len] = '\0';
-                }
-                ch_br_skip_capped(br, 1);
-            }
+            for (size_t i = 0; ch_br_remaining(br) > 0 && i < n_elems; i++)
+                ch_br_read_str(br, ctx->arena, (char**)dest + i);
             break;
         }
         case FIELD_FLOAT:
@@ -141,7 +148,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
         return CH_ERR_BAD_FIELDS_MARKER;
 
     const char* symbol;
-    CH_RET_IF_ERR(ch_br_read_symbol(br, &ctx->st, &symbol));
+    CH_RET_IF_ERR(ch_br_read_symbol(br, ctx->data->_last_st, &symbol));
 
     if (_stricmp(symbol, expected_symbol)) {
         CH_PARSER_LOG_ERR(ctx, "error attempting to read symbol %s, expected %s", symbol, expected_symbol);
@@ -155,7 +162,7 @@ ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,
 
     for (int i = 0; i < n_fields; i++) {
         ch_record block;
-        CH_RET_IF_ERR(ch_br_start_record(&ctx->st, &ctx->br, &block));
+        CH_RET_IF_ERR(ch_br_start_record(ctx->data->_last_st, &ctx->br, &block));
 
         // CRestore::FindField
         const ch_type_description* field = NULL;
