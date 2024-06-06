@@ -105,8 +105,7 @@ ch_err ch_parse_block_entities_header(ch_parsed_save_ctx* ctx, ch_block_entities
     ch_restored_class_arr* ent_table = &block->entity_table;
 
     ent_table->n_elems = ch_br_read_32(&ctx->br);
-    if (ctx->br.overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(&ctx->br);
 
     CH_RET_IF_ERR(ch_lookup_datamap(ctx, "entitytable_t", &ent_table->dm));
 
@@ -152,7 +151,7 @@ ch_err ch_parse_block_entities_body(ch_parsed_save_ctx* ctx, ch_block_entities* 
             continue;
 
         ctx->br = ch_br_jmp_rel(&ctx->br_cur_base, loc);
-        if (ctx->br.overflowed) {
+        if (ch_br_overflowed(&ctx->br)) {
             CH_PARSER_LOG_ERR(ctx, "bogus restore location for entity '%s' at index %d", classname, (int)i);
             continue;
         }

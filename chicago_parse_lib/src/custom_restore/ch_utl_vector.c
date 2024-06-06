@@ -14,8 +14,7 @@ ch_err ch_cr_utl_vector_restore_to(ch_parsed_save_ctx* ctx,
 
     assert(!embedded_map ^ (field_type == FIELD_EMBEDDED));
     vec->n_elems = ch_br_read_u32(&ctx->br);
-    if (ctx->br.overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(&ctx->br);
 
     vec->elem_size = field_type == FIELD_EMBEDDED ? embedded_map->ch_size : ch_field_type_byte_size(field_type);
     vec->elems = ch_arena_calloc(ctx->arena, vec->elem_size * vec->n_elems);

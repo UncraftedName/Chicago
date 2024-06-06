@@ -22,6 +22,10 @@
             return CH_ERR_OUT_OF_MEMORY; \
     } while (0)
 
+#define CH_RET_IF_BR_OVERFLOWED(br_ptr) \
+    if (ch_br_overflowed(br_ptr))       \
+    return CH_ERR_READER_OVERFLOWED
+
 typedef struct ch_symbol_table {
     const char* symbols;
     int n_symbols;

@@ -17,12 +17,12 @@ ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table* st, int n_sy
         return CH_ERR_OUT_OF_MEMORY;
 
     const unsigned char* start = br->cur;
-    for (int i = 0; i < n_symbols && !br->overflowed; i++) {
+    for (int i = 0; i < n_symbols && !ch_br_overflowed(br); i++) {
         if (*br->cur)
             st->symbol_offs[i] = br->cur - start;
         ch_br_skip(br, strnlen((const char*)br->cur, br->end - br->cur) + 1);
     }
-    if (br->overflowed) {
+    if (ch_br_overflowed(br)) {
         ch_free_symbol_table(st);
         return CH_ERR_BAD_SYMBOL_TABLE; // being more specific than reader overflow
     } else {
@@ -33,8 +33,7 @@ ch_err ch_br_read_symbol_table(ch_byte_reader* br, ch_symbol_table* st, int n_sy
 ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const char** symbol)
 {
     short idx = ch_br_read_16(br);
-    if (br->overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(br);
     if (idx < 0 || idx >= st->n_symbols)
         return CH_ERR_BAD_SYMBOL;
     *symbol = st->symbols + st->symbol_offs[idx];
@@ -44,13 +43,12 @@ ch_err ch_br_read_symbol(ch_byte_reader* br, const ch_symbol_table* st, const ch
 ch_err ch_br_start_record(const ch_symbol_table* st, ch_byte_reader* br_cur, ch_record* block)
 {
     int16_t size_bytes = ch_br_read_16(br_cur);
-    if (br_cur->overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(br_cur);
     if (size_bytes < 0)
         return CH_ERR_BAD_BLOCK_START;
     CH_RET_IF_ERR(ch_br_read_symbol(br_cur, st, &block->symbol));
     block->reader_after_block = ch_br_split_skip_swap(br_cur, size_bytes);
-    if (br_cur->overflowed)
+    if (ch_br_overflowed(br_cur))
         return CH_ERR_BAD_BLOCK_START;
     return CH_ERR_NONE;
 }
@@ -126,8 +124,8 @@ ch_err ch_br_restore_simple_field(ch_parsed_save_ctx* ctx,
     }
 
     // TODO apply field-specific fixups
-
-    return ctx->br.overflowed ? CH_ERR_READER_OVERFLOWED : CH_ERR_NONE;
+    CH_RET_IF_BR_OVERFLOWED(&ctx->br);
+    return CH_ERR_NONE;
 }
 
 ch_err ch_br_restore_fields(ch_parsed_save_ctx* ctx,

@@ -123,7 +123,7 @@ static ch_err ch_restore_block_headers(ch_parsed_save_ctx* ctx, ch_sf_save_data*
             continue;
         }
         ctx->br = ch_br_jmp_rel(&ctx->br_cur_base, header_loc);
-        if (ctx->br.overflowed) {
+        if (ch_br_overflowed(&ctx->br)) {
             CH_PARSER_LOG_ERR(ctx, "bogus header location for block '%s'", header_name);
             continue;
         }
@@ -139,8 +139,7 @@ static ch_err ch_restore_block_headers(ch_parsed_save_ctx* ctx, ch_sf_save_data*
     }
 
     ctx->br = ch_br_jmp_rel(&ctx->br_cur_base, headers_size_bytes);
-    if (ctx->br.overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(&ctx->br);
 
     return CH_ERR_NONE;
 }
@@ -210,12 +209,13 @@ static ch_err ch_restore_block_bodies(ch_parsed_save_ctx* ctx, ch_sf_save_data* 
             continue;
         }
 
-        int32_t body_loc = CH_FIELD_AT(CH_UTL_VEC_ELEM_PTR(*sf->block_headers, block->vec_idx - 1), td_loc_body, int32_t);
+        int32_t body_loc =
+            CH_FIELD_AT(CH_UTL_VEC_ELEM_PTR(*sf->block_headers, block->vec_idx - 1), td_loc_body, int32_t);
 
         if (body_loc == -1)
             continue;
         ctx->br = ch_br_jmp_rel(&br_local_base, body_loc);
-        if (ctx->br.overflowed) {
+        if (ch_br_overflowed(&ctx->br)) {
             CH_PARSER_LOG_ERR(ctx, "bogus body location for block '%s'", handler->name);
             continue;
         }
@@ -228,8 +228,7 @@ static ch_err ch_restore_block_bodies(ch_parsed_save_ctx* ctx, ch_sf_save_data* 
         }
         block->body_parsed = true;
     }
-    if (br_after_bodies.overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(&br_after_bodies);
     ctx->br = br_after_bodies;
     return CH_ERR_NONE;
 }
@@ -251,16 +250,14 @@ ch_err ch_parse_hl1(ch_parsed_save_ctx* ctx, ch_sf_save_data* sf)
 
     if (sections.symbol_table_size_bytes > 0) {
         ch_byte_reader br_st = ch_br_split_skip(br, sections.symbol_table_size_bytes);
-        if (br->overflowed)
-            return CH_ERR_READER_OVERFLOWED;
+        CH_RET_IF_BR_OVERFLOWED(br);
         CH_RET_IF_ERR(ch_br_read_symbol_table(&br_st, &ctx->st, sections.n_symbols));
     }
 
     ctx->br_cur_base = ctx->br;
     int32_t headers_size_bytes = ch_br_read_32(br);
     int32_t bodies_size_bytes = ch_br_read_32(br);
-    if (br->overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(br);
 
     CH_RET_IF_ERR(ch_restore_block_headers(ctx, sf, headers_size_bytes));
     CH_RET_IF_ERR(ch_restore_save_tables(ctx, sf));

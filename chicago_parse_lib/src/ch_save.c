@@ -48,7 +48,6 @@ ch_err ch_parse_save_bytes(ch_parsed_save_data* parsed_data, const ch_parse_info
             {
                 .cur = info->bytes,
                 .end = (unsigned char*)info->bytes + info->n_bytes,
-                .overflowed = false,
             },
         .arena = parsed_data->_arena,
     };
@@ -148,8 +147,7 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     int32_t global_fields_size_bytes = ch_br_read_32(br);
     int32_t st_n_symbols = ch_br_read_32(br);
     int32_t st_size_bytes = ch_br_read_32(br);
-    if (br->overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(br);
 
     ch_err err = CH_ERR_NONE;
 
@@ -157,20 +155,16 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
 
     if (st_size_bytes > 0) {
         ch_byte_reader br_st = ch_br_split_skip(br, st_size_bytes);
-        if (br->overflowed)
-            return CH_ERR_READER_OVERFLOWED;
+        CH_RET_IF_BR_OVERFLOWED(br);
         CH_RET_IF_ERR(ch_br_read_symbol_table(&br_st, &ctx->st, st_n_symbols));
     }
 
     // read global fields
 
     ch_byte_reader br_after_fields = ch_br_split_skip_swap(br, global_fields_size_bytes);
-    if (br_after_fields.overflowed) {
-        err = CH_ERR_READER_OVERFLOWED;
-    } else {
-        CH_RET_IF_ERR(ch_br_restore_class_by_name(ctx, "GameHeader", "GAME_HEADER", &ctx->data->game_header));
-        CH_RET_IF_ERR(ch_br_restore_class_by_name(ctx, "GLOBAL", "CGlobalState", &ctx->data->global_state));
-    }
+    CH_RET_IF_BR_OVERFLOWED(&br_after_fields);
+    CH_RET_IF_ERR(ch_br_restore_class_by_name(ctx, "GameHeader", "GAME_HEADER", &ctx->data->game_header));
+    CH_RET_IF_ERR(ch_br_restore_class_by_name(ctx, "GLOBAL", "CGlobalState", &ctx->data->global_state));
     *br = br_after_fields;
     ch_free_symbol_table(&ctx->st);
     if (err)
@@ -190,8 +184,7 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
     if (n_state_files == 0)
         n_state_files = ch_br_read_32(br);
 
-    if (br->overflowed)
-        return CH_ERR_READER_OVERFLOWED;
+    CH_RET_IF_BR_OVERFLOWED(br);
     if (n_state_files < 0)
         return CC_ERR_BAD_STATE_FILE_COUNT;
 
@@ -210,8 +203,7 @@ ch_err ch_parse_save_ctx(ch_parsed_save_ctx* ctx)
         if (sf_len_bytes < 0)
             return CH_ERR_BAD_STATE_FILE_LENGTH;
         ch_byte_reader br_after_sf = ch_br_split_skip_swap(br, sf_len_bytes);
-        if (br_after_sf.overflowed)
-            return CH_ERR_READER_OVERFLOWED;
+        CH_RET_IF_BR_OVERFLOWED(&br_after_sf);
         CH_RET_IF_ERR(ch_parse_state_file(ctx, sf));
         *br = br_after_sf;
     }

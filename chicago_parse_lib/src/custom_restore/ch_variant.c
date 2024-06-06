@@ -29,8 +29,7 @@ ch_err ch_cr_variant_restore(ch_parsed_save_ctx* ctx, ch_cr_variant** data)
         _CH_READ_CASE(FIELD_VECTOR, var->val_vec3f);
         _CH_READ_CASE(FIELD_POSITION_VECTOR, var->val_vec3f);
         case FIELD_VOID:
-            if (br->overflowed)
-                err = CH_ERR_READER_OVERFLOWED;
+            CH_RET_IF_BR_OVERFLOWED(br);
             break;
         default:
             var->ft = FIELD_VOID;

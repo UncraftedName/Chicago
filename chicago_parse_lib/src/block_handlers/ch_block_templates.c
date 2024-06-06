@@ -4,7 +4,8 @@
 ch_err ch_parse_block_templates_header(ch_parsed_save_ctx* ctx, ch_block_templates* block)
 {
     block->version = ch_br_read_16(&ctx->br);
-    return ctx->br.overflowed ? CH_ERR_READER_OVERFLOWED : CH_ERR_NONE;
+    CH_RET_IF_BR_OVERFLOWED(&ctx->br);
+    return CH_ERR_NONE;
 }
 
 ch_err ch_parse_block_templates_body(ch_parsed_save_ctx* ctx, ch_block_templates* block)

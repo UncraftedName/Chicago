@@ -33,14 +33,15 @@ ch_err ch_parse_hl2(ch_parsed_save_ctx* ctx, ch_sf_adjacent_client_state* sf)
 
     ch_hl2_sections sections = {0};
 
-    if (ch_br_peak_u32(br) == CH_SECTION_MAGIC_NUMBER) {
-        ch_br_skip(br, sizeof(uint32_t));
+    int32_t tmp_i32 = ch_br_read_32(br);
+
+    if (tmp_i32 == CH_SECTION_MAGIC_NUMBER) {
         if (ch_br_read_32(br) != CH_SECTION_VERSION_NUMBER)
             return CH_ERR_HL2_BAD_SECTION_HEADER;
         if (!ch_br_read(br, &sections, sizeof sections))
             return CH_ERR_READER_OVERFLOWED;
     } else {
-        sections.entity_size_bytes = ch_br_read_32(br);
+        sections.entity_size_bytes = tmp_i32;
         sections.header_size_bytes = ch_br_read_32(br);
         sections.decal_size_bytes = ch_br_read_32(br);
         sections.symbol_size_bytes = ch_br_read_32(br);

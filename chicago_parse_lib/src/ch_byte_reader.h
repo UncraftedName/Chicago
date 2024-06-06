@@ -8,23 +8,30 @@
 
 typedef struct ch_byte_reader {
     const unsigned char *cur, *end;
-    bool overflowed;
-    char _pad[3];
 } ch_byte_reader;
+
+inline bool ch_br_overflowed(const ch_byte_reader* br)
+{
+    return br->cur > br->end;
+}
+
+inline void ch_br_set_overflowed(ch_byte_reader* br)
+{
+    br->end = br->cur - 1;
+}
 
 inline bool ch_br_could_skip(const ch_byte_reader* br, size_t n)
 {
-    return !br->overflowed && br->cur + n <= br->end;
+    return !ch_br_overflowed(br) && br->cur + n <= br->end;
 }
 
-inline void ch_br_skip(ch_byte_reader* br, size_t n)
+inline bool ch_br_skip(ch_byte_reader* br, size_t n)
 {
-    if (ch_br_could_skip(br, n)) {
+    if (ch_br_could_skip(br, n))
         br->cur += n;
-    } else {
-        br->overflowed = true;
-        br->cur = br->end;
-    }
+    else
+        ch_br_set_overflowed(br);
+    return ch_br_overflowed(br);
 }
 
 inline void ch_br_skip_unchecked(ch_byte_reader* br, size_t n)
@@ -34,7 +41,7 @@ inline void ch_br_skip_unchecked(ch_byte_reader* br, size_t n)
 
 inline size_t ch_br_remaining(const ch_byte_reader* br)
 {
-    return (size_t)br->end - (size_t)br->cur;
+    return ch_br_overflowed(br) ? 0 : (size_t)br->end - (size_t)br->cur;
 }
 
 inline void ch_br_skip_capped(ch_byte_reader* br, size_t n)
@@ -53,17 +60,15 @@ inline size_t ch_br_strlen(const ch_byte_reader* br)
     return strnlen((const char*)br->cur, ch_br_remaining(br));
 }
 
-// returns true on success
 inline bool ch_br_read(ch_byte_reader* br, void* dest, size_t n)
 {
     if (ch_br_could_skip(br, n)) {
         memcpy(dest, br->cur, n);
         br->cur += n;
     } else {
-        br->overflowed = true;
-        br->cur = br->end;
+        ch_br_set_overflowed(br);
     }
-    return !br->overflowed;
+    return !ch_br_overflowed(br);
 }
 
 /*
@@ -83,8 +88,7 @@ inline ch_byte_reader ch_br_split_skip(ch_byte_reader* br, size_t chunk_size)
         return ret;
     } else {
         ch_byte_reader ret = {.cur = br->cur, .end = br->end};
-        br->cur = br->end;
-        br->overflowed = true;
+        ch_br_set_overflowed(br);
         return ret;
     }
 }
@@ -103,7 +107,8 @@ inline ch_byte_reader ch_br_split_skip_swap(ch_byte_reader* br, size_t chunk_siz
         br->end = br->cur + chunk_size;
         return ret;
     } else {
-        ch_byte_reader ret = {.cur = br->end, .end = br->end, .overflowed = true};
+        ch_byte_reader ret = {.cur = br->end, .end = br->end};
+        ch_br_set_overflowed(&ret);
         return ret;
     }
 }
@@ -118,7 +123,8 @@ inline ch_byte_reader ch_br_jmp_rel(const ch_byte_reader* br, size_t jmp_size)
         ch_byte_reader ret = {.cur = br->cur + jmp_size, .end = br->end};
         return ret;
     } else {
-        ch_byte_reader ret = {.cur = br->end, .end = br->end, .overflowed = true};
+        ch_byte_reader ret = {.cur = br->end, .end = br->end};
+        ch_br_set_overflowed(&ret);
         return ret;
     }
 }
@@ -131,28 +137,7 @@ inline ch_byte_reader ch_br_jmp_rel(const ch_byte_reader* br, size_t jmp_size)
             br->cur += sizeof(ret_type);                 \
             return tmp;                                  \
         } else {                                         \
-            br->overflowed = true;                       \
-            br->cur = br->end;                           \
-            return (ret_type)0;                          \
-        }                                                \
-    }
-
-#define CH_BR_DEFINE_PRIMITIVE_READ_UNCHECKED(func_name, ret_type) \
-    inline ret_type func_name(ch_byte_reader* br)                  \
-    {                                                              \
-        ret_type tmp = *(ret_type*)br->cur;                        \
-        br->cur += sizeof(ret_type);                               \
-        return tmp;                                                \
-    }
-
-#define CH_BR_DEFINE_PRIMITIVE_PEAK(func_name, ret_type) \
-    inline ret_type func_name(ch_byte_reader* br)        \
-    {                                                    \
-        if (ch_br_could_skip(br, sizeof(ret_type))) {    \
-            ret_type tmp = *(ret_type*)br->cur;          \
-            return tmp;                                  \
-        } else {                                         \
-            br->overflowed = true;                       \
+            ch_br_set_overflowed(br);                    \
             return (ret_type)0;                          \
         }                                                \
     }
@@ -160,5 +145,3 @@ inline ch_byte_reader ch_br_jmp_rel(const ch_byte_reader* br, size_t jmp_size)
 CH_BR_DEFINE_PRIMITIVE_READ(ch_br_read_16, int16_t)
 CH_BR_DEFINE_PRIMITIVE_READ(ch_br_read_32, int32_t)
 CH_BR_DEFINE_PRIMITIVE_READ(ch_br_read_u32, uint32_t)
-CH_BR_DEFINE_PRIMITIVE_READ_UNCHECKED(ch_br_read_16_unchecked, int16_t);
-CH_BR_DEFINE_PRIMITIVE_PEAK(ch_br_peak_u32, uint32_t)
