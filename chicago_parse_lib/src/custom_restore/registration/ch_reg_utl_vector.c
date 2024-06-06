@@ -1,28 +1,26 @@
-#include "ch_reg_decl.h"
+#include "ch_reg.h"
 #include "custom_restore/ch_utl_vector.h"
 #include "dump/ch_dump_decl.h"
 
-static ch_err ch_cr_utl_vector_dump_text(ch_dump_text* dump,
-                                         const ch_type_description* td,
-                                         const ch_cr_utl_vector* vec)
+static ch_err ch_cr_utl_vector_dump_text(ch_dump_text* dump, const ch_type_description* td, const ch_cr_utl_vector* vec)
 {
     return CH_DUMP_TEXT_CALL(g_dump_cr_utl_vec_fns, dump, td->name, vec);
 }
 
-#define CH_DEFINE_CUSTOM_VECTOR_CB(ft)                                         \
-    static ch_err _ch_cr_utl_vec_restore_##ft(ch_parsed_save_ctx* ctx,         \
-                                              ch_cr_utl_vector** vec, \
-                                              const ch_type_description* td,   \
-                                              const ch_datamap* dm)            \
-    {                                                                          \
-        (void)td;                                                              \
-        return ch_cr_utl_vector_restore(ctx, ft, dm, vec);                     \
+#define CH_DEFINE_CUSTOM_VECTOR_CB(ft)                                       \
+    static ch_err _ch_cr_utl_vec_restore_##ft(ch_parsed_save_ctx* ctx,       \
+                                              ch_cr_utl_vector** vec,        \
+                                              const ch_type_description* td, \
+                                              const ch_datamap* dm)          \
+    {                                                                        \
+        (void)td;                                                            \
+        return ch_cr_utl_vector_restore(ctx, ft, dm, vec);                   \
     }
 
 // CH_DEFINE_CUSTOM_VECTOR_CB(FIELD_EMBEDDED);
 CH_DEFINE_CUSTOM_VECTOR_CB(FIELD_EHANDLE);
 
-CH_DEFINE_REGISTER_FUNC(ch_reg_utl_vec)
+ch_err ch_reg_utl_vec(ch_register_params* params)
 {
     const static ch_dump_custom_fns dump_fns = {
         .text = ch_cr_utl_vector_dump_text,

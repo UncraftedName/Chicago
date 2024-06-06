@@ -9,7 +9,7 @@ static ch_err ch_dump_hl1_text(ch_dump_text* dump, const ch_sf_save_data* sf)
     CH_RET_IF_ERR(CH_DUMP_TEXT_CALL(g_dump_restored_class_fns, dump, sf->save_header.dm, sf->save_header.data));
 
     if (sf->adjacent_levels.n_elems > 0) {
-        CH_RET_IF_ERR(ch_dump_text_printf(dump, "%" PRId32 " adjacent Levels:\n", sf->adjacent_levels.n_elems));
+        CH_RET_IF_ERR(ch_dump_text_printf(dump, "%" PRId32 " adjacent levels:\n", sf->adjacent_levels.n_elems));
         dump->indent_lvl++;
     } else {
         CH_RET_IF_ERR(ch_dump_text_printf(dump, "No adjacent levels.\n"));

@@ -1,4 +1,4 @@
-#include "ch_reg_decl.h"
+#include "ch_reg.h"
 #include "custom_restore/ch_ent_output.h"
 #include "dump/ch_dump_decl.h"
 
@@ -19,7 +19,7 @@ static ch_err _ch_cr_ent_output_restore(ch_parsed_save_ctx* ctx,
     return ch_cr_ent_output_restore(ctx, output, td);
 }
 
-CH_DEFINE_REGISTER_FUNC(ch_reg_ent_output)
+ch_err ch_reg_ent_output(ch_register_params* params)
 {
     const static ch_dump_custom_fns dump_fns = {
         .text = ch_cr_ent_output_dump_text,

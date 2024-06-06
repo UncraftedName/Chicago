@@ -26,11 +26,4 @@ typedef struct ch_register_params {
 
 typedef ch_err (*ch_custom_register)(ch_register_params* params);
 
-#define CH_DECLARE_REGISTER_FUNC(name) const extern ch_custom_register name
-
-#define CH_DEFINE_REGISTER_FUNC(name)                  \
-    ch_err _##name##_impl(ch_register_params* params); \
-    const ch_custom_register name = _##name##_impl;    \
-    ch_err _##name##_impl(ch_register_params* params)
-
 ch_err ch_register_all(ch_datamap_collection_header* header, ch_datamap_collection* collection);

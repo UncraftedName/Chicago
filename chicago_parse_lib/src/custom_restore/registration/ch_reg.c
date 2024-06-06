@@ -1,5 +1,4 @@
 #include "ch_reg.h"
-#include "ch_reg_decl.h"
 #include "ch_save_internal.h"
 
 typedef enum ch_hm_op_entry_type {
@@ -86,6 +85,10 @@ static ch_err ch_register_cb(ch_register_info* info)
     assert(!existing);
     return hashmap_oom(info->builder->hm) ? CH_ERR_OUT_OF_MEMORY : CH_ERR_NONE;
 }
+
+ch_err ch_reg_utl_vec(ch_register_params* params);
+ch_err ch_reg_ent_output(ch_register_params* params);
+ch_err ch_reg_variant(ch_register_params* params);
 
 ch_err ch_register_all(ch_datamap_collection_header* header, ch_datamap_collection* collection)
 {

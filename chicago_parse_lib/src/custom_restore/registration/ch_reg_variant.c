@@ -1,10 +1,8 @@
-#include "ch_reg_decl.h"
+#include "ch_reg.h"
 #include "dump/ch_dump_decl.h"
 #include "custom_restore/ch_variant.h"
 
-static ch_err ch_cr_ent_output_dump_text(ch_dump_text* dump,
-                                         const ch_type_description* td,
-                                         const ch_cr_variant* var)
+static ch_err ch_cr_ent_output_dump_text(ch_dump_text* dump, const ch_type_description* td, const ch_cr_variant* var)
 {
     (void)td;
     return CH_DUMP_TEXT_CALL(g_dump_cr_variant, dump, td->name, var);
@@ -20,9 +18,8 @@ static ch_err _ch_cr_ent_output_restore(ch_parsed_save_ctx* ctx,
     return ch_cr_variant_restore(ctx, var);
 }
 
-
-CH_DEFINE_REGISTER_FUNC(ch_reg_variant) {
-
+ch_err ch_reg_variant(ch_register_params* params)
+{
     const static ch_dump_custom_fns dump_fns = {
         .text = ch_cr_ent_output_dump_text,
     };
