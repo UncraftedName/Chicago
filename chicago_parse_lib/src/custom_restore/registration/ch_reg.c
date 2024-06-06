@@ -86,17 +86,20 @@ static ch_err ch_register_cb(ch_register_info* info)
     return hashmap_oom(info->builder->hm) ? CH_ERR_OUT_OF_MEMORY : CH_ERR_NONE;
 }
 
-ch_err ch_reg_utl_vec(ch_register_params* params);
-ch_err ch_reg_ent_output(ch_register_params* params);
-ch_err ch_reg_variant(ch_register_params* params);
+#define CH_DECL_REG_FUNC(x) ch_err x(ch_register_params*);
+#define CH_ENUMERATE(x) x,
+
+#define CH_FOR_EACH_REG_FUNC(GEN) \
+    GEN(ch_reg_utl_vec)           \
+    GEN(ch_reg_ent_output)        \
+    GEN(ch_reg_variant)           \
+    GEN(ch_reg_activity)
+
+CH_FOR_EACH_REG_FUNC(CH_DECL_REG_FUNC);
 
 ch_err ch_register_all(ch_datamap_collection_header* header, ch_datamap_collection* collection)
 {
-    const ch_custom_register register_fns[] = {
-        ch_reg_utl_vec,
-        ch_reg_ent_output,
-        ch_reg_variant,
-    };
+    const ch_custom_register register_fns[] = {CH_FOR_EACH_REG_FUNC(CH_ENUMERATE)};
 
     struct hashmap* hm = hashmap_new(sizeof(ch_hm_ops_entry),
                                      header->n_datamaps,

@@ -52,3 +52,9 @@ CH_DECLARE_DUMP_FNS_SINGLE(cr_ent_output,
 
 struct ch_cr_variant;
 CH_DECLARE_DUMP_FNS_SINGLE(cr_variant, g_dump_cr_variant, const char* var_name, const struct ch_cr_variant* variant);
+
+struct ch_cr_activity;
+CH_DECLARE_DUMP_FNS_SINGLE(cr_activity,
+                           g_dump_cr_activity,
+                           const char* var_name,
+                           const struct ch_cr_activity* activity);

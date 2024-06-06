@@ -151,6 +151,7 @@ ch_err ch_dump_field_val_text(ch_dump_text* dump,
         // for now, we'll pretend that one character fields are not strings
         if (n_reduced_elems != 1)
             return ch_dump_text_printf(dump, "\"%.*s\"\n", total_size_bytes, field_ptr);
+            // TODO figure out a nice way to handle multiline strings
 
         // TODO doesn't seem like there's a sensible way to figure out if this is a string...
         // add some logic to manually display this in bytes for certain fields
